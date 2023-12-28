@@ -12,5 +12,7 @@ fn handle_error<T>(e: io::Error) -> T {
 }
 
 fn main() {
+	#[cfg(windows)]
+	colored::control::set_virtual_terminal(true);
 	config::init().unwrap_or_else(handle_error);
 }
