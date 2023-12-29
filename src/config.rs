@@ -169,14 +169,25 @@ fn parse_name_capture(caps: &Captures) -> String {
 			}
 		} else {
 			let invalid = String::from("%") + group.as_str();
-			handle_error(format!("unknown value '{}'", invalid.yellow().bold()))
+			handle_error(format!("unknown specifier '{}'", invalid.yellow().bold()))
 		}
 	} else {
 		let captured = caps.get(0).unwrap().as_str();
 		let mut result = String::new();
-		for item in StrftimeItems::new(captured) {
-			if let chrono::format::Item::Error = item {
-				handle_error(format!("unknown value '{}'", captured.yellow().bold()))
+		let mut iter = StrftimeItems::new(captured);
+		while let Some(item) = iter.next() {
+			use chrono::format::Item::Error;
+			if item == Error {
+				let mut suffix = String::new();
+				for item in iter {
+					if item != Error {
+						suffix += &Item(item).to_string()
+					}
+				}
+				return handle_error(format!(
+					"unknown specifier '{}'",
+					captured.strip_suffix(&suffix).unwrap_or(captured).yellow().bold()
+				));
 			} else {
 				result += &Item(item).to_string();
 			}
