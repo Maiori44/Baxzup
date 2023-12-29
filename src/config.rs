@@ -7,7 +7,7 @@ use std::{
 	str::FromStr,
 	fs, fmt::{Debug, Display},
 };
-use chrono::{Local, format::{StrftimeItems, self}, DateTime, FixedOffset, Offset};
+use chrono::{Local, format::StrftimeItems, DateTime, Offset};
 use clap::{
 	builder::{Styles, styling::{AnsiColor, Effects}},
 	crate_description,
@@ -105,22 +105,22 @@ impl Display for Item<'_> {
 }
 
 #[derive(Debug)]
-enum TagMode {
+enum TagKeepMode {
 	/// Keep the tagged folder with only the tag inside.
-	KeepTag,
+	Tag,
 
 	/// Keep the tagged folder with no file inside.
-	KeepDir,
+	Dir,
 
 	/// Don't keep the tagged folder at all.
-	KeepNone,
+	None,
 }
 
 #[derive(Debug)]
-struct Config {
+pub struct Config {
 	paths: Vec<PathBuf>,
 	exclude: Vec<Regex>,
-	exclude_tags: Vec<(String, TagMode)>,
+	exclude_tags: Vec<(String, TagKeepMode)>,
 	name: String,
 	level: u32,
 	memlimit: u64,
@@ -130,7 +130,7 @@ struct Config {
 
 pub static CONFIG: OnceLock<Config> = OnceLock::new();
 
-fn parse_excluded_tag(value: &Array) -> Result<(String, TagMode), &'static str> {
+fn parse_excluded_tag(value: &Array) -> Result<(String, TagKeepMode), &'static str> {
 	if value.len() != 2 {
 		return Err("an excluded tag should only be the name and mode");
 	}
@@ -144,9 +144,9 @@ fn parse_excluded_tag(value: &Array) -> Result<(String, TagMode), &'static str> 
 			value[1],
 			"excluded tag modes must be strings",
 			value.as_str() -> |s| Ok(match s.to_ascii_lowercase().as_str() {
-				"keep-tag" | "keep tag" | "keep_tag" | "keeptag" => TagMode::KeepTag,
-				"keep-dir" | "keep dir" | "keep_dir" | "keepdir" => TagMode::KeepDir,
-				"keep-none" | "keep none" | "keep_none" | "keepnone" => TagMode::KeepNone,
+				"keep-tag" | "keep tag" | "keep_tag" | "keeptag" => TagKeepMode::Tag,
+				"keep-dir" | "keep dir" | "keep_dir" | "keepdir" => TagKeepMode::Dir,
+				"keep-none" | "keep none" | "keep_none" | "keepnone" => TagKeepMode::None,
 				_ => return Err("unknown tag mode"),
 			})
 		),
@@ -197,7 +197,7 @@ Create backup using default configuration? [{}/{}]",
 			"N".cyan().bold()
 		);
 		let mut choice = [0];
-		io::stdin().read(&mut choice)?;
+		io::stdin().read_exact(&mut choice)?;
 		if choice[0].to_ascii_lowercase() != b'y' {
 			process::exit(0);
 		}
