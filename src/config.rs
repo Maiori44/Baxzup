@@ -1,4 +1,5 @@
 use std::{
+	ffi::OsString,
 	path::PathBuf,
 	fs::File,
 	process,
@@ -9,9 +10,11 @@ use clap::{
 	builder::{Styles, styling::{AnsiColor, Effects}},
 	crate_description,
 	crate_authors,
+	crate_name,
 	Parser,
 };
 use colored::Colorize;
+use dirs::config_dir;
 use toml::toml;
 
 #[derive(Parser)]
@@ -33,11 +36,14 @@ struct Cli {
     #[arg(
 		short,
 		long,
-		default_value = if let Ok(home) = std::env::var("HOME") {
-			home + "/.config/xz-backup/config.toml"
-		} else {
-			String::from("config.toml")
-		}
+		default_value(match config_dir() {
+			Some(mut dir) => {
+				dir.push(crate_name!());
+				dir.push("config.toml");
+				dir.into_os_string()
+			},
+			None => "config.toml".into(),
+		})
 	)]
     config_path: PathBuf,
 
