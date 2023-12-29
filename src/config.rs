@@ -12,6 +12,7 @@ use clap::{
 	Parser,
 };
 use colored::Colorize;
+use toml::toml;
 
 #[derive(Parser)]
 #[command(
@@ -55,7 +56,15 @@ pub fn init() -> io::Result<()> {
 		if let Some(parent) = cli.config_path.parent() {
 			fs::create_dir_all(parent)?;
 		}
-		File::create(cli.config_path)?;
+		fs::write(&cli.config_path, toml!(
+			[backup]
+			paths = []
+		).to_string())?;
+		println!(
+"Configuration saved in {}
+Modify the default settings to your liking and then re-run the command to start the backup.",
+			cli.config_path.to_string_lossy().cyan().bold()
+		);
 		process::exit(-1);
 	}
 	std::process::exit(1);
