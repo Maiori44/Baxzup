@@ -4,6 +4,7 @@ use std::{
 	io,
 };
 
+mod default_configs;
 mod config;
 
 fn handle_error<T>(e: io::Error) -> T {

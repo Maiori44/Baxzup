@@ -1,7 +1,5 @@
 use std::{
-	ffi::OsString,
 	path::PathBuf,
-	fs::File,
 	process,
 	io,
 	fs,
@@ -15,7 +13,7 @@ use clap::{
 };
 use colored::Colorize;
 use dirs::config_dir;
-use toml::toml;
+use crate::default_configs;
 
 #[derive(Parser)]
 #[command(
@@ -62,10 +60,7 @@ pub fn init() -> io::Result<()> {
 		if let Some(parent) = cli.config_path.parent() {
 			fs::create_dir_all(parent)?;
 		}
-		fs::write(&cli.config_path, toml!(
-			[backup]
-			paths = []
-		).to_string())?;
+		fs::write(&cli.config_path, default_configs::get())?;
 		println!(
 "Configuration saved in {}
 Modify the default settings to your liking and then re-run the command to start the backup.",
