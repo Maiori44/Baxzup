@@ -37,7 +37,7 @@ pub fn get() -> String {
 		level = 9
 		memlimit = memlimit
 		threads = threads
-		block-size = 0
+		block_size = 0
 	});
 	config.to_string()
 }

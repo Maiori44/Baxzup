@@ -5,7 +5,7 @@ pub fn get_config() -> Table {
 		[backup]
 		paths = ["/Users", "/Applications", "/Library"]
 		exclude = ["cache"]
-		exclude-tags = [["CACHEDIR.TAG", "keep-tag"]]
+		exclude_tags = [["CACHEDIR.TAG", "keep-tag"]]
 		name = "$hostname($m-$y).tar.xz"
 	}
 }

@@ -5,7 +5,7 @@ pub fn get_config() -> Table {
 		[backup]
 		paths = ["C:\\"]
 		exclude = ["C:\\Program Files", "C:\\Program Files (x86)", "C:\\Windows"]
-		exclude-tags = []
+		exclude_tags = []
 		name = "$hostname($m-$y).tar.xz"
 	}
 }
