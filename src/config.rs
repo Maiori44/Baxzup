@@ -5,7 +5,8 @@ use std::{
 	sync::OnceLock,
 	error::Error,
 	str::FromStr,
-	fs, fmt::{Debug, Display},
+	fmt::{Debug, Display},
+	fs,
 };
 use chrono::{Local, format::StrftimeItems, DateTime, Offset};
 use clap::{
@@ -89,15 +90,17 @@ struct Cli {
 	quiet: bool,
 }
 
-struct Item<'a> (chrono::format::Item<'a>, DateTime<Local>);
+struct Item<'a> (chrono::format::Item<'a>);
 
 impl Display for Item<'_> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let offset = self.1.offset();
+		static DATE: OnceLock<DateTime<Local>> = OnceLock::new();
+		let date = DATE.get_or_init(Local::now);
+		let offset = date.offset();
 		chrono::format::format_item(
 			f,
-			Some(&self.1.date_naive()),
-			Some(&self.1.time()),
+			Some(&date.date_naive()),
+			Some(&date.time()),
 			Some(&(offset.to_string(), offset.fix())),
 			&self.0
 		)
@@ -160,22 +163,26 @@ fn parse_name_capture(caps: &Captures) -> String {
 			_ => None,
 		};
 		if let Some(result) = result {
-			return match caps.get(2) {
+			match caps.get(2) {
 				Some(end) => result + end.as_str(),
 				None => result
 			}
-		}
-	}
-	let captured = caps.get(0).unwrap().as_str();
-	let mut result = String::new();
-	for item in StrftimeItems::new(captured) {
-		if let chrono::format::Item::Error = item {
-			handle_error(format!("unknown value '{}'", captured.yellow().bold()))
 		} else {
-			result += &Item(item, Local::now()).to_string()
+			let invalid = String::from("%") + group.as_str();
+			handle_error(format!("unknown value '{}'", invalid.yellow().bold()))
 		}
+	} else {
+		let captured = caps.get(0).unwrap().as_str();
+		let mut result = String::new();
+		for item in StrftimeItems::new(captured) {
+			if let chrono::format::Item::Error = item {
+				handle_error(format!("unknown value '{}'", captured.yellow().bold()))
+			} else {
+				result += &Item(item).to_string();
+			}
+		}
+		result
 	}
-	result
 }
 
 pub fn init() -> Result<(), Box<dyn Error>> {
