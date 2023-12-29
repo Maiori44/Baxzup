@@ -23,6 +23,8 @@ mod linux;
 )))]
 use linux::get_config;
 
+pub const NAME: &'static str = "%!hostname(%m-%y).tar.xz";
+
 pub fn get() -> String {
 	let system = System::new_with_specifics(
 		RefreshKind::new()

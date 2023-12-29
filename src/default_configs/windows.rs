@@ -1,3 +1,4 @@
+use crate::default_configs::NAME;
 use toml::{toml, Table};
 
 pub fn get_config() -> Table {
@@ -6,6 +7,6 @@ pub fn get_config() -> Table {
 		paths = ["C:\\"]
 		exclude = ["C:\\Program Files", "C:\\Program Files (x86)", "C:\\Windows"]
 		exclude_tags = []
-		name = "$hostname($m-$y).tar.xz"
+		name = NAME
 	}
 }

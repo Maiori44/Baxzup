@@ -1,15 +1,15 @@
 use colored::Colorize;
 use std::{
 	process,
-	io,
+	fmt::Display,
 };
 
 mod default_configs;
 mod config;
 
-fn handle_error<T>(e: io::Error) -> T {
-	eprintln!("{} {}", "error:".red().bold(), e.to_string().to_ascii_lowercase());
-	process::exit(e.raw_os_error().unwrap_or(-2))
+pub fn handle_error<T>(e: impl Display) -> T {
+	eprintln!("{} {}", "error:".red().bold(), e.to_string());
+	process::exit(-1);
 }
 
 fn main() {

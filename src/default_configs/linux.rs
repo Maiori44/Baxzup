@@ -1,3 +1,4 @@
+use crate::default_configs::NAME;
 use toml::{toml, Table};
 
 pub fn get_config() -> Table {
@@ -6,6 +7,6 @@ pub fn get_config() -> Table {
 		paths = ["/etc", "/home", "/root", "/usr", "/var"]
 		exclude = ["cache"]
 		exclude_tags = [["CACHEDIR.TAG", "keep-tag"]]
-		name = "$hostname($m-$y).tar.xz"
+		name = NAME
 	}
 }
