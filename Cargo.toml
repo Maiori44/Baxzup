@@ -12,6 +12,7 @@ license = "Zlib"
 
 [dependencies]
 clap = { version = "4.4.11", features = ["derive", "cargo", "wrap_help", "string"] }
+toml = { version = "0.8.8", features = ["preserve_order"] }
 colored = "2.1.0"
 dirs = "5.0.1"
-toml = "0.8.8"
+sysinfo = "0.30.2"
