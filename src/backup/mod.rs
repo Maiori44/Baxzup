@@ -1,6 +1,6 @@
 use std::{io::{self, Read, Write}, fs::File};
 use xz2::{read::XzEncoder, stream::MtStreamBuilder};
-use crate::config::config;
+use crate::{config::config, error::ResultExt};
 
 mod scanner;
 mod tar;
@@ -16,7 +16,7 @@ pub fn init() -> io::Result<()> {
 			.threads(config.threads)
 			.block_size(config.block_size)
 			.encoder()
-			.map_err(|e| io::Error::other(e.to_string()))?
+			.to_io_result()?
 	);
 	let mut output = File::options().read(true).write(true).create_new(true).open(config!(name))?;
 	let mut buf = [0; 10240];

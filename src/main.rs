@@ -1,20 +1,12 @@
-use colored::Colorize;
-use std::{
-	process,
-	fmt::Display,
-};
+use error::ResultExt;
 
+mod error;
 mod config;
 mod backup;
-
-pub fn handle_error<T>(e: impl Display) -> T {
-	eprintln!("{} {e}", "error:".red().bold());
-	process::exit(-1);
-}
 
 fn main() {
 	#[cfg(windows)]
 	colored::control::set_virtual_terminal(true);
-	config::init().unwrap_or_else(handle_error);
-	backup::init().unwrap_or_else(handle_error);
+	config::init().unwrap_or_exit();
+	backup::init().unwrap_or_exit();
 }

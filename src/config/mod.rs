@@ -21,7 +21,7 @@ use dirs::config_dir;
 use regex::{Regex, Captures};
 use sysinfo::{System, User, RefreshKind, ProcessRefreshKind, Users};
 use toml::{value::Array, Table};
-use crate::handle_error;
+use crate::error::{self, ResultExt};
 
 mod default;
 
@@ -53,7 +53,7 @@ macro_rules! map {
 		$name
 			.$as()
 			.map_or_else(|| Err($err), $f)
-			.unwrap_or_else(handle_error)
+			.unwrap_or_exit()
 	};
 }
 
@@ -221,7 +221,7 @@ fn parse_name_capture(caps: &Captures) -> String {
 			}
 		} else {
 			let invalid = String::from("%") + group.as_str();
-			handle_error(format!("unknown specifier '{}'", invalid.yellow().bold()))
+			error::handler(format!("unknown specifier '{}'", invalid.yellow().bold()))
 		}
 	} else {
 		let captured = caps.get(0).unwrap().as_str();
@@ -236,7 +236,7 @@ fn parse_name_capture(caps: &Captures) -> String {
 						suffix += &Item(item).to_string()
 					}
 				}
-				return handle_error(format!(
+				error::handler(format!(
 					"unknown specifier '{}'",
 					captured.strip_suffix(&suffix).unwrap_or(captured).yellow().bold()
 				));
@@ -278,11 +278,11 @@ Create backup using default configuration? [{}/{}]",
 	CONFIG.set(Config {
 		paths: parse_config_field!(config.backup.paths -> map!(
 			"paths must be strings",
-			value.as_str() -> |s| Ok(PathBuf::from_str(s).unwrap_or_else(handle_error))
+			value.as_str() -> |s| Ok(PathBuf::from_str(s).unwrap_or_exit())
 		)),
 		exclude: parse_config_field!(config.backup.exclude -> map!(
 			"excluded patterns must be strings",
-			value.as_str() -> |s| Ok(Regex::new(s).unwrap_or_else(handle_error))
+			value.as_str() -> |s| Ok(Regex::new(s).unwrap_or_exit())
 		)),
 		exclude_tags: parse_config_field!(config.backup.exclude_tags -> map!(
 			"excluded tags must be arrays of arrays containing the path and the mode (both strings)",

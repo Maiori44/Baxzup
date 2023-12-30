@@ -1,5 +1,5 @@
 use std::{path::{PathBuf, Path}, thread::{self, JoinHandle}, io, error::Error};
-use crate::config::config;
+use crate::{config::config, error::ResultExt};
 use flume::Sender;
 
 pub type Entry = (PathBuf, PathBuf);
@@ -17,9 +17,7 @@ pub fn spawn_thread(tx: Sender<Entry>) -> JoinHandle<io::Result<()>> {
 		for path_ref in paths {
 			let path = path_ref.canonicalize()?;
 			let name = Path::new(path.file_name().unwrap()).to_path_buf();
-			if let Err(e) = scan_path(path, name, &tx) {
-				return Err(io::Error::other(e.to_string()))
-			}
+			scan_path(path, name, &tx).to_io_result()?;
 		}
 		Ok(())
 	})
