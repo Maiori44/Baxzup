@@ -4,7 +4,6 @@ use std::{
 	fmt::Display,
 };
 
-mod default_configs;
 mod config;
 
 pub fn handle_error<T>(e: impl Display) -> T {

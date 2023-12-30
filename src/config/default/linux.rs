@@ -1,4 +1,4 @@
-use crate::default_configs::NAME;
+use crate::config::default::NAME;
 use toml::{toml, Table};
 
 pub fn get_config() -> Table {

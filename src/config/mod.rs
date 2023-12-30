@@ -21,7 +21,9 @@ use dirs::config_dir;
 use regex::{Regex, Captures};
 use sysinfo::{System, User, RefreshKind, ProcessRefreshKind, Users};
 use toml::{value::Array, Table};
-use crate::{default_configs, handle_error};
+use crate::handle_error;
+
+mod default;
 
 macro_rules! parse_config_field {
 	($name:ident.$i1:ident.$i2:ident) => {{
@@ -253,7 +255,7 @@ pub fn init() -> Result<(), Box<dyn Error>> {
 		if let Some(parent) = cli.config_path.parent() {
 			fs::create_dir_all(parent)?;
 		}
-		fs::write(&cli.config_path, default_configs::get())?;
+		fs::write(&cli.config_path, default::get())?;
 		println!(
 "Configuration saved in {}
 Create backup using default configuration? [{}/{}]",
