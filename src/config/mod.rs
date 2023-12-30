@@ -18,7 +18,7 @@ use clap::{
 };
 use colored::Colorize;
 use dirs::config_dir;
-use regex::{Regex, Captures};
+use regex::{bytes, Regex, Captures};
 use sysinfo::{System, User, RefreshKind, ProcessRefreshKind, Users};
 use toml::{value::Array, Table};
 use crate::error::{self, ResultExt};
@@ -70,6 +70,10 @@ macro_rules! config {
 	($field:ident) => {
 		&config!().$field
 	};
+	($($field:ident),+) => {{
+		let config = config!();
+		($(&config.$field),+)
+	}};
 }
 
 pub(crate) use config;
@@ -141,7 +145,7 @@ pub enum TagKeepMode {
 #[derive(Debug)]
 pub struct Config {
 	pub paths: Vec<PathBuf>,
-	pub exclude: Vec<Regex>,
+	pub exclude: Vec<bytes::Regex>,
 	pub exclude_tags: Vec<(String, TagKeepMode)>,
 	pub name: String,
 	pub level: u32,
@@ -282,7 +286,7 @@ Create backup using default configuration? [{}/{}]",
 		)),
 		exclude: parse_config_field!(config.backup.exclude -> map!(
 			"excluded patterns must be strings",
-			value.as_str() -> |s| Ok(Regex::new(s).unwrap_or_exit())
+			value.as_str() -> |s| Ok(bytes::Regex::new(s).unwrap_or_exit())
 		)),
 		exclude_tags: parse_config_field!(config.backup.exclude_tags -> map!(
 			"excluded tags must be arrays of arrays containing the path and the mode (both strings)",
