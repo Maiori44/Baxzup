@@ -19,7 +19,7 @@ use clap::{
 use colored::Colorize;
 use dirs::config_dir;
 use regex::{Regex, Captures};
-use sysinfo::System;
+use sysinfo::{System, User, RefreshKind, ProcessRefreshKind, Users};
 use toml::{value::Array, Table};
 use crate::{default_configs, handle_error};
 
@@ -156,10 +156,43 @@ fn parse_excluded_tag(value: &Array) -> Result<(String, TagKeepMode), &'static s
 	))
 }
 
+fn get_user() -> &'static Option<&'static User> {
+	static USERS: OnceLock<Users> = OnceLock::new();
+	static USER: OnceLock<Option<&User>> = OnceLock::new();
+	USER.get_or_init(|| USERS.get_or_init(Users::new_with_refreshed_list).get_user_by_id(
+		System::new_with_specifics(RefreshKind::new()
+			.with_processes(ProcessRefreshKind::new().with_user(sysinfo::UpdateKind::Always)))
+			.process(sysinfo::get_current_pid().unwrap())
+			.unwrap()
+			.user_id()?
+	))
+}
+
+fn unknown() -> String {
+	String::from("unknown")
+}
+
 fn parse_name_capture(caps: &Captures) -> String {
 	if let Some(group) = caps.get(1) {
 		let result = match group.as_str() {
-			"!hostname" => Some(System::host_name().unwrap_or_else(|| String::from("unknown"))),
+			"!hostname" => Some(System::host_name().unwrap_or_else(unknown)),
+			"!systemname" => Some(System::name().unwrap_or_else(unknown)),
+			"!systemid" => Some(System::distribution_id()),
+			"!username" => Some(match get_user() {
+				Some(user) => String::from(user.name()),
+				None => unknown(),
+			}),
+			#[cfg(target_os = "windows")]
+			"!groupname" => unknown(),
+			#[cfg(not(target_os = "windows"))]
+			"!groupname" => Some(match get_user() {
+				Some(user) => {
+					let gid = user.group_id();
+					let group = user.groups().into_iter().find(|x| *x.id() == gid);
+					group.map_or_else(unknown, |group| String::from(group.name()))
+				},
+				None => unknown()
+			}),
 			_ => None,
 		};
 		if let Some(result) = result {
