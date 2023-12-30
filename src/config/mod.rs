@@ -58,14 +58,17 @@ macro_rules! map {
 }
 
 macro_rules! config {
-	($field:ident) => {
+	() => {
 		//SAFETY: The configuration will always be initialized by the time this macro is used.
 		unsafe {
 			use crate::config::CONFIG;
 			let config = CONFIG.get();
 			debug_assert!(config.is_some());
-			&config.unwrap_unchecked().$field
+			config.unwrap_unchecked()
 		}
+	};
+	($field:ident) => {
+		&config!().$field
 	};
 }
 
