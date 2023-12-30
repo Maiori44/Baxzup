@@ -6,7 +6,7 @@ use std::{
 	error::Error,
 	str::FromStr,
 	fmt::{Debug, Display},
-	fs,
+	fs, collections::HashMap, ffi::OsString,
 };
 use chrono::{Local, format::StrftimeItems, DateTime, Offset};
 use clap::{
@@ -130,7 +130,7 @@ impl Display for Item<'_> {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TagKeepMode {
 	/// Keep the tagged folder with only the tag inside.
 	Tag,
@@ -146,7 +146,7 @@ pub enum TagKeepMode {
 pub struct Config {
 	pub paths: Vec<PathBuf>,
 	pub exclude: Vec<bytes::Regex>,
-	pub exclude_tags: Vec<(String, TagKeepMode)>,
+	pub exclude_tags: HashMap<OsString, TagKeepMode>,
 	pub name: String,
 	pub level: u32,
 	pub memlimit: u64,
@@ -156,7 +156,7 @@ pub struct Config {
 
 pub static CONFIG: OnceLock<Config> = OnceLock::new();
 
-fn parse_excluded_tag(value: &Array) -> Result<(String, TagKeepMode), &'static str> {
+fn parse_excluded_tag(value: &Array) -> Result<(OsString, TagKeepMode), &'static str> {
 	if value.len() != 2 {
 		return Err("an excluded tag should only be the name and mode");
 	}
@@ -164,7 +164,7 @@ fn parse_excluded_tag(value: &Array) -> Result<(String, TagKeepMode), &'static s
 		map!(
 			value[0],
 			"excluded tag names must be strings",
-			value.as_str() -> |s| Ok(String::from(s))
+			value.as_str() -> |s| Ok(OsString::from(s))
 		),
 		map!(
 			value[1],
