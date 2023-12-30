@@ -1,10 +1,10 @@
-use std::{path::{PathBuf, Path}, thread::{self, JoinHandle}, io};
+use std::{path::{PathBuf, Path}, thread::{self, JoinHandle}, io, error::Error};
 use crate::config::config;
-use flume::{Sender, SendError};
+use flume::Sender;
 
 pub type Entry = (PathBuf, PathBuf);
 
-fn scan_path(path: PathBuf, name: PathBuf, tx: &Sender<Entry>) -> Result<(), SendError<Entry>> {
+fn scan_path(path: PathBuf, name: PathBuf, tx: &Sender<Entry>) -> Result<(), Box<dyn Error>> {
 	if path.is_file() {
 		tx.send((path, name))?;
 	}
