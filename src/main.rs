@@ -5,6 +5,7 @@ use std::{
 };
 
 mod config;
+mod backup;
 
 pub fn handle_error<T>(e: impl Display) -> T {
 	eprintln!("{} {e}", "error:".red().bold());
@@ -15,4 +16,5 @@ fn main() {
 	#[cfg(windows)]
 	colored::control::set_virtual_terminal(true);
 	config::init().unwrap_or_else(handle_error);
+	backup::init().unwrap_or_else(handle_error);
 }
