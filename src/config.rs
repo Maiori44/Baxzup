@@ -55,6 +55,20 @@ macro_rules! map {
 	};
 }
 
+macro_rules! config {
+	($field:ident) => {
+		//SAFETY: The configuration will always be initialized by the time this macro is used.
+		unsafe {
+			use crate::config::CONFIG;
+			let config = CONFIG.get();
+			debug_assert!(config.is_some());
+			&config.unwrap_unchecked().$field
+		}
+	};
+}
+
+pub(crate) use config;
+
 #[derive(Parser)]
 #[command(
 	version,
@@ -108,7 +122,7 @@ impl Display for Item<'_> {
 }
 
 #[derive(Debug)]
-enum TagKeepMode {
+pub enum TagKeepMode {
 	/// Keep the tagged folder with only the tag inside.
 	Tag,
 
@@ -121,14 +135,14 @@ enum TagKeepMode {
 
 #[derive(Debug)]
 pub struct Config {
-	paths: Vec<PathBuf>,
-	exclude: Vec<Regex>,
-	exclude_tags: Vec<(String, TagKeepMode)>,
-	name: String,
-	level: u32,
-	memlimit: u64,
-	threads: u32,
-	block_size: u64,
+	pub paths: Vec<PathBuf>,
+	pub exclude: Vec<Regex>,
+	pub exclude_tags: Vec<(String, TagKeepMode)>,
+	pub name: String,
+	pub level: u32,
+	pub memlimit: u64,
+	pub threads: u32,
+	pub block_size: u64,
 }
 
 pub static CONFIG: OnceLock<Config> = OnceLock::new();
@@ -279,5 +293,5 @@ Create backup using default configuration? [{}/{}]",
 		block_size: parse_config_field!(config.xz.block_size -> u64),
 	}).unwrap();
 	println!("{} loading configuration!", "Finished".green().bold());
-	std::process::exit(1);
+	Ok(()) //TODO: finish cli
 }
