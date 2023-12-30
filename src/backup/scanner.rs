@@ -1,10 +1,21 @@
 use std::{path::{PathBuf, Path}, thread::{self, JoinHandle}, io, error::Error};
 use crate::{config::config, error::ResultExt};
 use flume::Sender;
+use regex::bytes::Regex;
 
 pub type Entry = (PathBuf, PathBuf);
 
-fn scan_path(path: PathBuf, name: PathBuf, tx: &Sender<Entry>) -> Result<(), Box<dyn Error>> {
+fn scan_path(
+	path: PathBuf,
+	name: PathBuf,
+	tx: &Sender<Entry>,
+	exclude: &Vec<Regex>
+) -> Result<(), Box<dyn Error>> {
+	for pattern in exclude {
+		if pattern.is_match(path.as_os_str().as_encoded_bytes()) {
+			return Ok(());
+		}
+	}
 	if path.is_file() {
 		tx.send((path, name))?;
 	}
@@ -13,11 +24,11 @@ fn scan_path(path: PathBuf, name: PathBuf, tx: &Sender<Entry>) -> Result<(), Box
 
 pub fn spawn_thread(tx: Sender<Entry>) -> JoinHandle<io::Result<()>> {
 	thread::spawn(move || {
-		let paths = config!(paths);
+		let (paths, exclude) = config!(paths, exclude);
 		for path_ref in paths {
 			let path = path_ref.canonicalize()?;
 			let name = Path::new(path.file_name().unwrap()).to_path_buf();
-			scan_path(path, name, &tx).to_io_result()?;
+			scan_path(path, name, &tx, exclude).to_io_result()?;
 		}
 		Ok(())
 	})
