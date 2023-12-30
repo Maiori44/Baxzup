@@ -1,5 +1,5 @@
 use std::{path::{PathBuf, Path}, thread::{self, JoinHandle}, io, error::Error};
-use crate::{config::config, error::ResultExt};
+use crate::{config::{config, TagKeepMode}, error::ResultExt};
 use flume::Sender;
 use regex::bytes::Regex;
 
@@ -18,6 +18,29 @@ fn scan_path(
 	}
 	if path.is_file() {
 		tx.send((path, name))?;
+	} else if path.is_dir() {
+		let tags = config!(exclude_tags);
+		let mut contents = Vec::new();
+		for entry in path.read_dir()? {
+			let entry = entry?;
+			if let Some(mode) = tags.get(&entry.file_name()).copied() {
+				if mode == TagKeepMode::None {
+					return Ok(())
+				} else {
+					contents.clear();
+					if mode == TagKeepMode::Tag {
+						contents.push(entry);
+					}
+				}
+				break;
+			}
+			contents.push(entry);
+		}
+		tx.send((path, name.clone()))?;
+		for entry in contents {
+			let entry_path = entry.path().to_path_buf();
+			scan_path(entry_path, name.join(entry.file_name()), tx, exclude)?;
+		}
 	}
 	Ok(())
 }
