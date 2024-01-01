@@ -31,13 +31,11 @@ pub fn get() -> String {
 			.with_memory(MemoryRefreshKind::new().with_ram())
 			.with_cpu(CpuRefreshKind::new())
 	);
-	let memlimit = system.total_memory() / 2;
 	let threads = system.cpus().len();
 	let mut config = get_config();
 	config.extend(toml! {
 		[xz]
 		level = 9
-		memlimit = memlimit
 		threads = threads
 		block_size = 0
 	});

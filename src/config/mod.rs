@@ -149,7 +149,6 @@ pub struct Config {
 	pub exclude_tags: HashMap<OsString, TagKeepMode>,
 	pub name: String,
 	pub level: u32,
-	pub memlimit: usize,
 	pub threads: u32,
 	pub block_size: u64,
 }
@@ -297,9 +296,8 @@ Create backup using default configuration? [{}/{}]",
 			parse_name_capture
 		).into_owned(),
 		level: parse_config_field!(config.xz.level -> u32),
-		memlimit: parse_config_field!(config.xz.memlimit -> usize),
 		threads: parse_config_field!(config.xz.threads -> u32),
-		block_size: parse_config_field!(config.xz.block_size -> u64),
+		block_size: parse_config_field!(config.xz.blocksize -> u64),
 	}).unwrap();
 	println!("{} loading configuration!", "Finished".green().bold());
 	Ok(()) //TODO: finish cli

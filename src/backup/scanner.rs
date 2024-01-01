@@ -12,6 +12,7 @@ struct Scanner<'a> {
 
 impl<'a> Scanner<'a> {
 	fn scan_path(&mut self, path: PathBuf, name: PathBuf) -> Result<(), Box<dyn Error>> {
+		//println!("scanner: {}", name.display().to_string());
 		for pattern in self.exclude {
 			if pattern.is_match(path.as_os_str().as_encoded_bytes()) {
 				return Ok(());
@@ -55,7 +56,9 @@ pub fn spawn_thread(tx: Sender<Entry>) -> JoinHandle<io::Result<()>> {
 			let path = path_ref.canonicalize()?;
 			let name = Path::new(path.file_name().unwrap()).to_path_buf();
 			scanner.scan_path(path, name).to_io_result()?;
+			println!("finished {}", path_ref.display().to_string());
 		}
+		println!("scanner done!");
 		Ok(())
 	})
 }
