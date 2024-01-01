@@ -1,6 +1,7 @@
 use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}, error::Error};
 use crate::{config::{TagKeepMode, Config}, error::ResultExt};
 use super::WriterObserver;
+use indicatif::ProgressBar;
 use tar::Builder;
 
 fn scan_path(
@@ -42,9 +43,13 @@ fn scan_path(
 	Ok(())
 }
 
-pub fn spawn_thread<W: Write + Send + 'static>(writer: W, config: Config) -> JoinHandle<io::Result<()>> {
+pub fn spawn_thread<W: Write + Send + 'static>(
+	writer: W,
+	config: Config,
+	bar: ProgressBar,
+) -> JoinHandle<io::Result<()>> {
 	thread::spawn(move || {
-		let mut builder = Builder::new(WriterObserver { writer });
+		let mut builder = Builder::new(WriterObserver { writer, bar, f: ProgressBar::inc_length });
 		for path_ref in &config.paths {
 			let path = path_ref.canonicalize()?;
 			let name = Path::new(path.file_name().unwrap()).to_path_buf();

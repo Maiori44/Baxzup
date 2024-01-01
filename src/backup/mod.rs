@@ -1,5 +1,6 @@
-use xz2::{bufread::XzEncoder, stream::MtStreamBuilder};
-use std::{io::{self, BufReader, Write}, fs::File};
+use indicatif::ProgressBar;
+use xz2::{read::XzEncoder, stream::MtStreamBuilder};
+use std::{io::{self, Write}, fs::File};
 use crate::{config::Config, error::ResultExt};
 
 mod tar;
@@ -7,11 +8,14 @@ mod tar;
 
 pub struct WriterObserver<W: Write + Send + 'static> {
 	writer: W,
+	bar: ProgressBar,
+	f: fn(&ProgressBar, u64),
 }
 
 impl<W: Write + Send + 'static> Write for WriterObserver<W> {
 	fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
 		let wrote = self.writer.write(buf)?;
+		(self.f)(&self.bar, wrote as u64);
 		Ok(wrote)
 	}
 
@@ -21,6 +25,7 @@ impl<W: Write + Send + 'static> Write for WriterObserver<W> {
 }
 
 pub fn init(config: Config) -> io::Result<()> {
+	let bar = ProgressBar::new(0);
 	let (reader, writer) = os_pipe::pipe()?;
 	let stream = MtStreamBuilder::new()
 		.preset(config.level)
@@ -28,9 +33,9 @@ pub fn init(config: Config) -> io::Result<()> {
 		.block_size(config.block_size)
 		.encoder()
 		.to_io_result()?;
-	let mut compressor = XzEncoder::new_stream(BufReader::new(reader), stream);
-	let mut output_file = File::options().read(true).write(true).create_new(true).open(&config.name)?;
-	let tar_thread = tar::spawn_thread(writer, config);
-	io::copy(&mut compressor, &mut output_file)?;
+	let mut compressor = XzEncoder::new_stream(reader, stream);
+	let output_file = File::options().read(true).write(true).create_new(true).open(&config.name)?;
+	let tar_thread = tar::spawn_thread(writer, config, bar.clone());
+	io::copy(&mut compressor, &mut WriterObserver { writer: output_file, bar, f: ProgressBar::inc })?;
 	tar_thread.join().unwrap()
 }
