@@ -1,9 +1,13 @@
 use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}, error::Error};
-use crate::{config::{config, TagKeepMode}, error::ResultExt};
+use crate::{config::{TagKeepMode, Config}, error::ResultExt};
 use tar::Builder;
 
-fn scan_path(path: PathBuf, name: PathBuf, builder: &mut Builder<impl Write>) -> Result<(), Box<dyn Error>> {
-	let config = config!();
+fn scan_path(
+	path: PathBuf,
+	name: PathBuf,
+	builder: &mut Builder<impl Write>,
+	config: &Config,
+) -> Result<(), Box<dyn Error>> {
 	for pattern in &config.exclude {
 		if pattern.is_match(path.as_os_str().as_encoded_bytes()) {
 			return Ok(());
@@ -12,11 +16,10 @@ fn scan_path(path: PathBuf, name: PathBuf, builder: &mut Builder<impl Write>) ->
 	if path.is_file() {
 		builder.append_path_with_name(path, name)?;
 	} else if path.is_dir() {
-		let tags = config!(exclude_tags);
 		let mut contents = Vec::new();
 		for entry in path.read_dir()? {
 			let entry = entry?;
-			if let Some(mode) = tags.get(&entry.file_name()).copied() {
+			if let Some(mode) = config.exclude_tags.get(&entry.file_name()).copied() {
 				if mode == TagKeepMode::None {
 					return Ok(())
 				} else {
@@ -32,20 +35,19 @@ fn scan_path(path: PathBuf, name: PathBuf, builder: &mut Builder<impl Write>) ->
 		builder.append_path_with_name(path, name.clone())?;
 		for entry in contents {
 			let entry_path = entry.path().to_path_buf();
-			scan_path(entry_path, name.join(entry.file_name()), builder)?;
+			scan_path(entry_path, name.join(entry.file_name()), builder, config)?;
 		}
 	}
 	Ok(())
 }
 
-pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<io::Result<()>> {
+pub fn spawn_thread<W: Write + Send + 'static>(writer: W, config: Config) -> JoinHandle<io::Result<()>> {
 	thread::spawn(move || {
 		let mut builder = Builder::new(writer);
-		let (paths, exclude) = config!(paths, exclude);
-		for path_ref in paths {
+		for path_ref in &config.paths {
 			let path = path_ref.canonicalize()?;
 			let name = Path::new(path.file_name().unwrap()).to_path_buf();
-			scan_path(path, name, &mut builder).to_io_result()?;
+			scan_path(path, name, &mut builder, &config).to_io_result()?;
 		}
 		Ok(())
 	})

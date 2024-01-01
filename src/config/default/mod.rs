@@ -35,7 +35,7 @@ pub fn get() -> String {
 	let mut config = get_config();
 	config.extend(toml! {
 		[xz]
-		level = 9
+		level = 8
 		threads = threads
 		block_size = 0
 	});

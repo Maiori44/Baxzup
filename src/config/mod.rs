@@ -57,27 +57,6 @@ macro_rules! map {
 	};
 }
 
-macro_rules! config {
-	() => {
-		//SAFETY: The configuration will always be initialized by the time this macro is used.
-		unsafe {
-			use crate::config::CONFIG;
-			let config = CONFIG.get();
-			debug_assert!(config.is_some());
-			config.unwrap_unchecked()
-		}
-	};
-	($field:ident) => {
-		&config!().$field
-	};
-	($($field:ident),+) => {{
-		let config = config!();
-		($(&config.$field),+)
-	}};
-}
-
-pub(crate) use config;
-
 #[derive(Parser)]
 #[command(
 	version,
@@ -152,8 +131,6 @@ pub struct Config {
 	pub threads: u32,
 	pub block_size: u64,
 }
-
-pub static CONFIG: OnceLock<Config> = OnceLock::new();
 
 fn parse_excluded_tag(value: &Array) -> Result<(OsString, TagKeepMode), &'static str> {
 	if value.len() != 2 {
@@ -251,7 +228,7 @@ fn parse_name_capture(caps: &Captures) -> String {
 	}
 }
 
-pub fn init() -> Result<(), Box<dyn Error>> {
+pub fn init() -> Result<Config, Box<dyn Error>> {
 	let cli = Cli::parse();
 	if cli.quiet {
 		unimplemented!();
@@ -278,7 +255,7 @@ Create backup using default configuration? [{}/{}]",
 	print!("{} configuration...\r", "Loading".cyan().bold());
 	io::stdout().flush()?;
 	let config: Table = toml::from_str(&fs::read_to_string(cli.config_path)?)?;
-	CONFIG.set(Config {
+	let result = Config {
 		paths: parse_config_field!(config.backup.paths -> map!(
 			"paths must be strings",
 			value.as_str() -> |s| Ok(PathBuf::from_str(s).unwrap_or_exit())
@@ -297,8 +274,8 @@ Create backup using default configuration? [{}/{}]",
 		).into_owned(),
 		level: parse_config_field!(config.xz.level -> u32),
 		threads: parse_config_field!(config.xz.threads -> u32),
-		block_size: parse_config_field!(config.xz.blocksize -> u64),
-	}).unwrap();
+		block_size: parse_config_field!(config.xz.block_size -> u64),
+	};
 	println!("{} loading configuration!", "Finished".green().bold());
-	Ok(()) //TODO: finish cli
+	Ok(result) //TODO: finish cli
 }
