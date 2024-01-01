@@ -2,7 +2,6 @@ use xz2::{bufread::XzEncoder, stream::MtStreamBuilder};
 use std::{io::{self, BufReader}, fs::File};
 use crate::{config::config, error::ResultExt};
 
-mod scanner;
 mod tar;
 
 pub fn init() -> io::Result<()> {

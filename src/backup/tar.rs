@@ -1,44 +1,52 @@
-use std::{thread::{JoinHandle, self}, io::{self, Write}};
-use super::scanner;
-use flume::Sender;
+use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}, error::Error};
+use crate::{config::{config, TagKeepMode}, error::ResultExt};
 use tar::Builder;
+
+fn scan_path(path: PathBuf, name: PathBuf, builder: &mut Builder<impl Write>) -> Result<(), Box<dyn Error>> {
+	let config = config!();
+	for pattern in &config.exclude {
+		if pattern.is_match(path.as_os_str().as_encoded_bytes()) {
+			return Ok(());
+		}
+	}
+	if path.is_file() {
+		builder.append_path_with_name(path, name)?;
+	} else if path.is_dir() {
+		let tags = config!(exclude_tags);
+		let mut contents = Vec::new();
+		for entry in path.read_dir()? {
+			let entry = entry?;
+			if let Some(mode) = tags.get(&entry.file_name()).copied() {
+				if mode == TagKeepMode::None {
+					return Ok(())
+				} else {
+					contents.clear();
+					if mode == TagKeepMode::Tag {
+						contents.push(entry);
+					}
+				}
+				break;
+			}
+			contents.push(entry);
+		}
+		builder.append_path_with_name(path, name.clone())?;
+		for entry in contents {
+			let entry_path = entry.path().to_path_buf();
+			scan_path(entry_path, name.join(entry.file_name()), builder)?;
+		}
+	}
+	Ok(())
+}
 
 pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<io::Result<()>> {
 	thread::spawn(move || {
-		let (tx, rx) = flume::bounded(1);
-		let scanner_thread = scanner::spawn_thread(tx);
 		let mut builder = Builder::new(writer);
-		loop {
-			if let Ok((path, name)) = rx.try_recv() {
-				println!("tar: {}", path.to_string_lossy().to_string());
-				builder.append_path_with_name(path, name)?;
-			} else if scanner_thread.is_finished() {
-				builder.finish()?;
-				break scanner_thread.join().unwrap();
-			}
+		let (paths, exclude) = config!(paths, exclude);
+		for path_ref in paths {
+			let path = path_ref.canonicalize()?;
+			let name = Path::new(path.file_name().unwrap()).to_path_buf();
+			scan_path(path, name, &mut builder).to_io_result()?;
 		}
-	})
-}
-
-pub struct ChannelWriter {
-	tx: Sender<Vec<u8>>
-}
-
-impl From<Sender<Vec<u8>>> for ChannelWriter {
-	fn from(value: Sender<Vec<u8>>) -> Self {
-		Self { tx: value }
-	}
-}
-
-impl Write for ChannelWriter {
-	fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-		match self.tx.send(buf.iter().rev().copied().collect()) {
-			Ok(()) => Ok(buf.len()),
-			Err(_) => Ok(0),
-		}
-	}
-
-	fn flush(&mut self) -> io::Result<()> {
 		Ok(())
-	}
+	})
 }
