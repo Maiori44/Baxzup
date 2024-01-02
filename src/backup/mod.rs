@@ -1,41 +1,48 @@
-use indicatif::ProgressBar;
+use indicatif::{ProgressBar, ProgressStyle};
 use xz2::{read::XzEncoder, stream::MtStreamBuilder};
-use std::{io::{self, Write}, fs::File};
+use std::{io::{self, Read}, fs::File, thread::{self, JoinHandle}, time::Duration};
 use crate::{config::Config, error::ResultExt};
 
 mod tar;
 
-
-pub struct WriterObserver<W: Write + Send + 'static> {
-	writer: W,
-	bar: ProgressBar,
-	f: fn(&ProgressBar, u64),
-}
-
-impl<W: Write + Send + 'static> Write for WriterObserver<W> {
-	fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-		let wrote = self.writer.write(buf)?;
-		(self.f)(&self.bar, wrote as u64);
-		Ok(wrote)
-	}
-
-	fn flush(&mut self) -> io::Result<()> {
-		self.writer.flush()
+fn spawn_bar_thread<R: Read>(bar: ProgressBar, compressor: *const XzEncoder<R>) -> JoinHandle<()> {
+	//SAFETY: This awful hack is "fine" because the compressor will only go out of scope after the thread ended.
+	unsafe { //TODO: I should find a better way to do this...
+		let compressor_ptr = compressor as usize;
+		thread::spawn(move || {
+			let compressor = &*(compressor_ptr as *const XzEncoder<R>);
+			loop {
+				//bar.println(format!("TOTAL OUT {}/{}", (*compressor).total_out(), bar.length().unwrap()));
+				bar.set_position(compressor.total_out());
+				thread::sleep(Duration::from_millis(166));
+				if bar.is_finished() {
+					break;
+				}
+			}
+		})
 	}
 }
 
 pub fn init(config: Config) -> io::Result<()> {
-	let bar = ProgressBar::new(0);
+	let bar = ProgressBar::new(0).with_style(
+		ProgressStyle::with_template("{spinner} [{elapsed_precise}] {wide_bar} {percent}%")
+			.unwrap()
+	);
 	let (reader, writer) = os_pipe::pipe()?;
-	let stream = MtStreamBuilder::new()
-		.preset(config.level)
-		.threads(config.threads)
-		.block_size(config.block_size)
-		.encoder()
-		.to_io_result()?;
-	let mut compressor = XzEncoder::new_stream(reader, stream);
-	let output_file = File::options().read(true).write(true).create_new(true).open(&config.name)?;
+	let mut compressor = XzEncoder::new_stream(
+		reader,
+		MtStreamBuilder::new()
+			.preset(config.level)
+			.threads(config.threads)
+			.block_size(config.block_size)
+			.encoder()
+			.to_io_result()?
+	);
+	let mut output_file = File::options().read(true).write(true).create_new(true).open(&config.name)?;
 	let tar_thread = tar::spawn_thread(writer, config, bar.clone());
-	io::copy(&mut compressor, &mut WriterObserver { writer: output_file, bar, f: ProgressBar::inc })?;
+	let bar_thread = spawn_bar_thread(bar.clone(), &compressor);
+	io::copy(&mut compressor, &mut output_file)?;
+	bar.finish();
+	bar_thread.join().unwrap();
 	tar_thread.join().unwrap()
 }
