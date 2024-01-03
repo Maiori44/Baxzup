@@ -26,20 +26,31 @@ use crate::error::{self, ResultExt};
 mod default;
 
 macro_rules! parse_config_field {
-	($name:ident.$i1:ident.$i2:ident) => {{
-		const I1: &'static str = stringify!($i1);
-		const I2: &'static str = stringify!($i2);
+	($name:ident.$i1:ident.$i2:ident?) => {{
 		$name
-			.get(I1)
-			.ok_or(format!("Missing table {} in configuration file!", I1))?
-			.get(I2)
-			.ok_or(format!("Could not find {} in configuration file!", I2))?
+			.get(stringify!($i1))
+			.ok_or(format!("Missing table '{}' in configuration file!", stringify!($i1).cyan().bold()))?
+			.get(stringify!($i2))
+	}};
+	($name:ident.$i1:ident.$i2:ident) => {{
+		parse_config_field!($name.$i1.$i2?)
+			.ok_or(format!(
+				"Could not find field '{}' in configuration file!",
+				format!("{}.{}", stringify!($i1), stringify!($i2)).cyan().bold()
+			))?
 	}};
 	($name:ident.$i1:ident.$i2:ident -> $type:ident) => {
 		parse_config_field!($name.$i1.$i2).clone().try_into::<$type>()?
 	};
-	($name:ident.$i1:ident.$i2:ident -> map!($err:literal, value.$as:ident() -> $f:expr)) => {
-		parse_config_field!($name.$i1.$i2 -> Array)
+	($name:ident.$i1:ident.$i2:ident [default: $default:expr] -> $type:ident) => {
+		match parse_config_field!($name.$i1.$i2?) {
+			Some(field) => field.clone().try_into::<$type>()?,
+			None => $default,
+		}
+	};
+	($name:ident.$i1:ident.$i2:ident $([default: $default:expr])?
+	-> map!($err:literal, value.$as:ident() -> $f:expr)) => {
+		parse_config_field!($name.$i1.$i2 $([default: $default])? -> Array)
 			.iter()
 			.map(|value| {
 				map!(value, $err, value.$as() -> $f)
@@ -274,7 +285,7 @@ Create backup using default configuration? [{}/{}]",
 		).into_owned(),
 		level: parse_config_field!(config.xz.level -> u32),
 		threads: parse_config_field!(config.xz.threads -> u32),
-		block_size: parse_config_field!(config.xz.block_size -> u64),
+		block_size: parse_config_field!(config.xz.block_size [default: 0] -> u64),
 	};
 	println!("{} loading configuration!", "Finished".green().bold());
 	Ok(result) //TODO: finish cli
