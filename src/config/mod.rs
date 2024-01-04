@@ -194,7 +194,7 @@ fn parse_name_capture(caps: &Captures) -> String {
 				None => unknown(),
 			}),
 			#[cfg(target_os = "windows")]
-			"!groupname" => unknown(),
+			"!groupname" => Some(unknown()),
 			#[cfg(not(target_os = "windows"))]
 			"!groupname" => Some(match get_user() {
 				Some(user) => {
