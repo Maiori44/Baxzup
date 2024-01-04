@@ -137,6 +137,7 @@ pub struct Config {
 	pub paths: Vec<PathBuf>,
 	pub exclude: Vec<bytes::Regex>,
 	pub exclude_tags: HashMap<OsString, TagKeepMode>,
+	pub progress_bars: bool,
 	pub name: String,
 	pub level: u32,
 	pub threads: u32,
@@ -279,6 +280,7 @@ Create backup using default configuration? [{}/{}]",
 			"excluded tags must be arrays of arrays containing the path and the mode (both strings)",
 			value.as_array() -> parse_excluded_tag
 		)),
+		progress_bars: parse_config_field!(config.backup.progress_bars [default: true] -> bool),
 		name: Regex::new(r"%(![a-z]+)?([^% ]*)?")?.replace_all(
 			&parse_config_field!(config.backup.name -> String),
 			parse_name_capture

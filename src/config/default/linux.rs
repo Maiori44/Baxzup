@@ -7,6 +7,7 @@ pub fn get_config() -> Table {
 		paths = ["/etc", "/home", "/root", "/usr", "/var"]
 		exclude = ["cache"]
 		exclude_tags = [["CACHEDIR.TAG", "keep-tag"]]
+		progress_bars = true
 		name = NAME
 	}
 }

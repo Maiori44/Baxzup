@@ -7,6 +7,7 @@ pub fn get_config() -> Table {
 		paths = ["C:\\"]
 		exclude = ["C:\\Program Files", "C:\\Program Files (x86)", "C:\\Windows"]
 		exclude_tags = []
+		progress_bars = true
 		name = NAME
 	}
 }
