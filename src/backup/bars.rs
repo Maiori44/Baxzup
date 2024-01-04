@@ -25,11 +25,15 @@ impl BarsHandler {
 		}
 		let multi = MultiProgress::new();
 		let tar_bar = ProgressBar::new(0).with_message("Archiving".cyan().bold().to_string()).with_style(
-			ProgressStyle::with_template("{msg}   {spinner} [{elapsed_precise}] {wide_bar} {percent}%")
+			ProgressStyle::with_template(
+					"{msg}   {spinner} [{elapsed_precise}] {wide_bar:.yellow} {percent:>2}%"
+				)
 				.unwrap()
 		);
 		let xz_bar = ProgressBar::new(0).with_message("Compressing".cyan().bold().to_string()).with_style(
-			ProgressStyle::with_template("{msg} {spinner} [{elapsed_precise}] {wide_bar} {percent}%")
+			ProgressStyle::with_template(
+					"{msg} {spinner} [{elapsed_precise}] {wide_bar:.magenta} {percent:>3}%"
+				)
 				.unwrap()
 		);
 		multi.add(tar_bar.clone());
