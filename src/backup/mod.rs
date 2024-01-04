@@ -2,6 +2,7 @@ use xz2::{read::XzEncoder, stream::MtStreamBuilder};
 use crate::{config::Config, error::ResultExt};
 use self::bars::BarsHandler;
 use std::{io, fs::File};
+use colored::Colorize;
 
 mod bars;
 mod tar;
@@ -22,7 +23,10 @@ pub fn init(config: Config) -> io::Result<()> {
 	let tar_thread = tar::spawn_thread(writer, config, &bars_handler);
 	io::copy(&mut compressor, &mut output_file)?;
 	if bars_handler.enabled {
-		bars_handler.xz_bar.finish();
+		bars_handler.xz_bar.finish_with_message("Compressed ".green().bold().to_string());
+		if !bars_handler.tar_bar.is_finished() {
+			bars_handler.tar_bar.abandon_with_message("Archived?".yellow().bold().to_string());
+		}
 		bars_handler.end();
 	}
 	tar_thread.join().unwrap()

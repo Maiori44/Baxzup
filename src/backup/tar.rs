@@ -1,6 +1,7 @@
 use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}, error::Error};
 use crate::{config::{TagKeepMode, Config}, error::ResultExt};
 use indicatif::ProgressBar;
+use colored::Colorize;
 use tar::Builder;
 
 use super::bars::BarsHandler;
@@ -97,7 +98,7 @@ pub fn spawn_thread<W: Write + Send + 'static>(
 			scan_path(path, name, &mut builder, &config).to_io_result()?;
 		}
 		if config.progress_bars {
-			tar_bar.unwrap().finish();
+			tar_bar.unwrap().finish_with_message("Archived ".green().bold().to_string());
 		}
 		builder.finish()?;
 		Ok(())

@@ -1,6 +1,7 @@
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::{thread::{JoinHandle, self}, hint, time::Duration, io::Read, ops::Deref};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use xz2::read::XzEncoder;
+use colored::Colorize;
 
 pub struct InternalBarsHandler {
 	_multi: MultiProgress,
@@ -23,16 +24,16 @@ impl BarsHandler {
 			};
 		}
 		let multi = MultiProgress::new();
-		let xz_bar = ProgressBar::new(0).with_style(
-			ProgressStyle::with_template("{spinner} [{elapsed_precise}] {wide_bar} {percent}%")
+		let tar_bar = ProgressBar::new(0).with_message("Archiving".cyan().bold().to_string()).with_style(
+			ProgressStyle::with_template("{msg}   {spinner} [{elapsed_precise}] {wide_bar} {percent}%")
 				.unwrap()
 		);
-		let tar_bar = ProgressBar::new(0).with_style(
-			ProgressStyle::with_template("{spinner} [{elapsed_precise}] {wide_bar} {percent}%")
+		let xz_bar = ProgressBar::new(0).with_message("Compressing".cyan().bold().to_string()).with_style(
+			ProgressStyle::with_template("{msg} {spinner} [{elapsed_precise}] {wide_bar} {percent}%")
 				.unwrap()
 		);
-		multi.add(xz_bar.clone());
 		multi.add(tar_bar.clone());
+		multi.add(xz_bar.clone());
 		let compressor_ptr = compressor as usize;
 		Self {
 			enabled,
