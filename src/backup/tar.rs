@@ -75,7 +75,7 @@ pub fn spawn_thread<W: Write + Send + 'static>(
 	writer: W,
 	config: Config,
 	bars_handler: &BarsHandler,
-) -> JoinHandle<io::Result<()>> {
+) -> JoinHandle<()> {
 	let (xz_bar, tar_bar) = if config.progress_bars {
 		(Some(bars_handler.xz_bar.clone()), Some(bars_handler.tar_bar.clone()))
 	} else {
@@ -93,14 +93,13 @@ pub fn spawn_thread<W: Write + Send + 'static>(
 			Box::new(writer)
 		});
 		for path_ref in &config.paths {
-			let path = path_ref.canonicalize()?;
+			let path = path_ref.canonicalize().unwrap_or_exit();
 			let name = Path::new(path.file_name().unwrap()).to_path_buf();
-			scan_path(path, name, &mut builder, &config).to_io_result()?;
+			scan_path(path, name, &mut builder, &config).to_io_result().unwrap_or_exit();
 		}
 		if config.progress_bars {
 			tar_bar.unwrap().finish_with_message("Archived ".green().bold().to_string());
 		}
-		builder.finish()?;
-		Ok(())
+		builder.finish().unwrap_or_exit();
 	})
 }

@@ -29,5 +29,6 @@ pub fn init(config: Config) -> io::Result<()> {
 		}
 		bars_handler.end();
 	}
-	tar_thread.join().unwrap()
+	tar_thread.join().unwrap();
+	Ok(())
 }
