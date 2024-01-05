@@ -5,7 +5,6 @@ use super::tar::scan_path;
 use xz2::read::XzEncoder;
 use colored::Colorize;
 
-
 pub struct InternalBarsHandler {
 	pub xz_bar: ProgressBar,
 	pub tar_bar: ProgressBar,
@@ -24,7 +23,7 @@ impl BarsHandler {
 		let multi = MultiProgress::new();
 		let tar_bar = ProgressBar::new(0).with_message("Archiving".cyan().bold().to_string()).with_style(
 			ProgressStyle::with_template(
-					"{msg}   {spinner} [{elapsed_precise}] {wide_bar:.yellow} {percent:>2}%"
+					"{msg}   {spinner} [{elapsed_precise}] {wide_bar:.yellow} {percent:>3}%"
 				)
 				.unwrap()
 		);
@@ -36,6 +35,7 @@ impl BarsHandler {
 		);
 		multi.add(tar_bar.clone());
 		multi.add(xz_bar.clone());
+		multi.set_move_cursor(true);
 		let compressor_ptr = compressor as usize;
 		Self(Some(InternalBarsHandler {
 			xz_bar: xz_bar.clone(),
@@ -43,37 +43,47 @@ impl BarsHandler {
 			_multi: multi,
 			ticker: {
 				let xz_bar = xz_bar.clone();
-				let tar_bar = tar_bar.clone();
 				thread::spawn(move || {
 					let interval_duration = Duration::from_millis(166);
 					// SAFETY: this awful hack is "fine" because the compressor is dropped after the thread.
 					let compressor = unsafe { &*(compressor_ptr as *mut XzEncoder<R>) };
 					loop {
-						xz_bar.set_position(compressor.total_out());
-						tar_bar.tick();
+						xz_bar.set_position(compressor.total_in());
 						thread::sleep(interval_duration);
-						if xz_bar.is_finished() && tar_bar.is_finished() {
+						if xz_bar.is_finished() {
 							break;
 						}
 					}
 				})
 			},
 			loader: thread::spawn(move || {
-				unimplemented!("gotta make config global to ease this...");
-				/*for path in paths {
-					if let Ok(path) = path {
-						scan_path(path, PathBuf::new(), config, |path, _| {
+				let config = config!();
+				for path_ref in &config.paths {
+					if let Ok(path) = path_ref.canonicalize() {
+						let _ = scan_path(path, PathBuf::new(), &mut |path, _| {
+							if let Ok(meta) = if config.follow_symlinks {
+								path.metadata()
+							} else {
+								path.symlink_metadata()
+							} {
+								xz_bar.inc_length(meta.len());
+							}
+							tar_bar.inc_length(1);
 							Ok(())
 						});
 					}
-				}*/
+				}
 			}),
 		}))
 	}
 
 	pub fn end(self) {
 		// SAFETY: the program will always check Config.progress_bars before calling this.
-		unsafe { self.0.unwrap_unchecked().ticker.join().unwrap_unchecked() }
+		unsafe {
+			let internal = self.0.unwrap_unchecked();
+			internal.ticker.join().unwrap_unchecked();
+			internal.loader.join().unwrap_unchecked();
+		}
 	}
 }
 
