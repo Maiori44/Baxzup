@@ -1,27 +1,25 @@
-use std::{thread::{JoinHandle, self}, hint, time::Duration, io::Read, ops::Deref};
+use std::{thread::{JoinHandle, self}, hint, time::Duration, io::Read, ops::Deref, path::PathBuf};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use crate::config::Config;
+use super::tar::scan_path;
 use xz2::read::XzEncoder;
 use colored::Colorize;
 
+
 pub struct InternalBarsHandler {
-	_multi: MultiProgress,
 	pub xz_bar: ProgressBar,
 	pub tar_bar: ProgressBar,
-	pub thread: JoinHandle<()>
+	_multi: MultiProgress,
+	ticker: JoinHandle<()>,
+	loader: JoinHandle<()>,
 }
 
-pub struct BarsHandler {
-	pub enabled: bool,
-	internal: Option<InternalBarsHandler>,
-}
+pub struct BarsHandler (Option<InternalBarsHandler>);
 
 impl BarsHandler {
-	pub fn new<R: Read>(enabled: bool, compressor: *const XzEncoder<R>) -> Self {
-		if !enabled {
-			return Self {
-				enabled,
-				internal: None
-			};
+	pub fn new<R: Read>(config: &Config, compressor: *const XzEncoder<R>) -> Self {
+		if !config.progress_bars {
+			return Self(None);
 		}
 		let multi = MultiProgress::new();
 		let tar_bar = ProgressBar::new(0).with_message("Archiving".cyan().bold().to_string()).with_style(
@@ -39,13 +37,15 @@ impl BarsHandler {
 		multi.add(tar_bar.clone());
 		multi.add(xz_bar.clone());
 		let compressor_ptr = compressor as usize;
-		Self {
-			enabled,
-			internal: Some(InternalBarsHandler {
-				_multi: multi,
-				xz_bar: xz_bar.clone(),
-				tar_bar: tar_bar.clone(),
-				thread: thread::spawn(move || {
+		let paths = config.paths.clone().into_iter().map(|path| path.canonicalize());
+		Self(Some(InternalBarsHandler {
+			xz_bar: xz_bar.clone(),
+			tar_bar: tar_bar.clone(),
+			_multi: multi,
+			ticker: {
+				let xz_bar = xz_bar.clone();
+				let tar_bar = tar_bar.clone();
+				thread::spawn(move || {
 					let interval_duration = Duration::from_millis(166);
 					// SAFETY: this awful hack is "fine" because the compressor is dropped after the thread.
 					let compressor = unsafe { &*(compressor_ptr as *mut XzEncoder<R>) };
@@ -58,13 +58,23 @@ impl BarsHandler {
 						}
 					}
 				})
-			})
-		}
+			},
+			loader: thread::spawn(move || {
+				unimplemented!("gotta make config global to ease this...");
+				/*for path in paths {
+					if let Ok(path) = path {
+						scan_path(path, PathBuf::new(), config, |path, _| {
+							Ok(())
+						});
+					}
+				}*/
+			}),
+		}))
 	}
 
 	pub fn end(self) {
-		// SAFETY: the program will always check self.enabled before calling this.
-		unsafe { self.internal.unwrap_unchecked().thread.join().unwrap_unchecked() }
+		// SAFETY: the program will always check Config.progress_bars before calling this.
+		unsafe { self.0.unwrap_unchecked().ticker.join().unwrap_unchecked() }
 	}
 }
 
@@ -72,10 +82,10 @@ impl Deref for BarsHandler {
 	type Target = InternalBarsHandler;
 
 	fn deref(&self) -> &InternalBarsHandler {
-		debug_assert!(self.enabled);
-		match self.internal {
+		debug_assert!(self.0.is_some());
+		match self.0 {
 			Some(ref bars_handler) => bars_handler,
-			// SAFETY: the program will always check self.enabled before calling this.
+			// SAFETY: the program will always check Config.progress_bars before calling this.
 			None => unsafe { hint::unreachable_unchecked() },
 		}
 	}
