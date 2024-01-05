@@ -1,46 +1,20 @@
-use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}, error::Error};
+use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}};
 use crate::{config::{TagKeepMode, Config}, error::ResultExt};
-use indicatif::ProgressBar;
+use super::bars::BarsHandler;
 use colored::Colorize;
 use tar::Builder;
 
-use super::bars::BarsHandler;
-
-pub struct WriterObserver<W: Write + Send + 'static> {
-	writer: W,
-	xz_bar: ProgressBar,
-	total_wrote: f64,
-	dirs_left: f64,
-}
-
-impl<W: Write + Send + 'static> Write for WriterObserver<W> {
-	fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-		let wrote = self.writer.write(buf)?;
-		self.total_wrote += buf.len() as f64;
-		//self.bar.set_length((self.total_wrote * (self.dirs_left + 9.0).log10()) as u64);
-		self.xz_bar.set_length(self.total_wrote as u64);
-		Ok(wrote)
-	}
-
-	fn flush(&mut self) -> io::Result<()> {
-		self.writer.flush()
-	}
-}
-
-
-fn scan_path(
+pub fn scan_path(
 	path: PathBuf,
 	name: PathBuf,
-	builder: &mut Builder<impl Write>,
 	config: &Config,
-) -> Result<(), Box<dyn Error>> {
+	mut action: impl FnMut(PathBuf, PathBuf) -> io::Result<()>,
+) -> io::Result<()> {
 	for pattern in &config.exclude {
 		if pattern.is_match(path.as_os_str().as_encoded_bytes()) {
 			return Ok(());
 		}
 	}
-	//println!("{}", path.to_string_lossy());
-	//bar.println(path.to_string_lossy());
 	if path.is_dir() && (config.follow_symlinks || !path.is_symlink()) {
 		let mut contents = Vec::new();
 		for entry in path.read_dir()? {
@@ -58,15 +32,13 @@ fn scan_path(
 			}
 			contents.push(entry);
 		}
-		//builder.get_mut().dirs_left += 1.0;
-		builder.append_path_with_name(path, name.clone())?; //TODO: refactor and do stuff manually
+		action(path, name.clone())?;
 		for entry in contents {
 			let entry_path = entry.path().to_path_buf();
-			scan_path(entry_path, name.join(entry.file_name()), builder, config)?;
+			scan_path(entry_path, name.join(entry.file_name()), config, |path, name| action(path, name))?;
 		}
-		//builder.get_mut().dirs_left -= 1.0;
 	} else {
-		builder.append_path_with_name(path, name)?;
+		action(path, name)?;
 	}
 	Ok(())
 }
@@ -76,27 +48,27 @@ pub fn spawn_thread<W: Write + Send + 'static>(
 	config: Config,
 	bars_handler: &BarsHandler,
 ) -> JoinHandle<()> {
-	let (xz_bar, tar_bar) = if config.progress_bars {
-		(Some(bars_handler.xz_bar.clone()), Some(bars_handler.tar_bar.clone()))
+	let tar_bar = if config.progress_bars {
+		Some(bars_handler.tar_bar.clone())
 	} else {
-		(None, None)
+		None
 	};
 	thread::spawn(move || {
-		let mut builder: Builder<Box<dyn Write>> = Builder::new(if config.progress_bars {
-			Box::new(WriterObserver {
-				writer,
-				xz_bar: xz_bar.unwrap(),
-				total_wrote: 0.0,
-				dirs_left: 0.0,
-			})
-		} else {
-			Box::new(writer)
-		});
+		let mut builder = Builder::new(writer);
 		builder.follow_symlinks(config.follow_symlinks);
 		for path_ref in &config.paths {
 			let path = path_ref.canonicalize().unwrap_or_exit();
 			let name = Path::new(path.file_name().unwrap()).to_path_buf();
-			scan_path(path, name, &mut builder, &config).to_io_result().unwrap_or_exit();
+			if config.progress_bars {
+				scan_path(path, name, &config, |path, name| {
+					tar_bar.as_ref().unwrap().inc(1);
+					builder.append_path_with_name(path, name)
+				})
+			} else {
+				scan_path(path, name, &config, |path, name| {
+					builder.append_path_with_name(path, name)
+				})
+			}.unwrap_or_exit();
 		}
 		if config.progress_bars {
 			tar_bar.unwrap().finish_with_message("Archived ".green().bold().to_string());
