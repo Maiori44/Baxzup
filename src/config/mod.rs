@@ -138,6 +138,7 @@ pub struct Config {
 	pub exclude: Vec<bytes::Regex>,
 	pub exclude_tags: HashMap<OsString, TagKeepMode>,
 	pub progress_bars: bool,
+	pub follow_symlinks: bool,
 	pub name: String,
 	pub level: u32,
 	pub threads: u32,
@@ -281,6 +282,7 @@ Create backup using default configuration? [{}/{}]",
 			value.as_array() -> parse_excluded_tag
 		)),
 		progress_bars: parse_config_field!(config.backup.progress_bars [default: true] -> bool),
+		follow_symlinks: parse_config_field!(config.backup.follow_symlinks [default: false] -> bool),
 		name: Regex::new(r"%(![a-z]+)?([^% ]*)?")?.replace_all(
 			&parse_config_field!(config.backup.name -> String),
 			parse_name_capture

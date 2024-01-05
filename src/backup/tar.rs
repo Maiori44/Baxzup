@@ -41,9 +41,7 @@ fn scan_path(
 	}
 	//println!("{}", path.to_string_lossy());
 	//bar.println(path.to_string_lossy());
-	if path.is_file() || path.is_symlink() {
-		builder.append_path_with_name(path, name)?;
-	} else if path.is_dir() {
+	if path.is_dir() && (config.follow_symlinks || !path.is_symlink()) {
 		let mut contents = Vec::new();
 		for entry in path.read_dir()? {
 			let entry = entry?;
@@ -67,6 +65,8 @@ fn scan_path(
 			scan_path(entry_path, name.join(entry.file_name()), builder, config)?;
 		}
 		//builder.get_mut().dirs_left -= 1.0;
+	} else {
+		builder.append_path_with_name(path, name)?;
 	}
 	Ok(())
 }
@@ -92,7 +92,7 @@ pub fn spawn_thread<W: Write + Send + 'static>(
 		} else {
 			Box::new(writer)
 		});
-		builder.follow_symlinks(false);
+		builder.follow_symlinks(config.follow_symlinks);
 		for path_ref in &config.paths {
 			let path = path_ref.canonicalize().unwrap_or_exit();
 			let name = Path::new(path.file_name().unwrap()).to_path_buf();
