@@ -41,7 +41,7 @@ fn scan_path(
 	}
 	//println!("{}", path.to_string_lossy());
 	//bar.println(path.to_string_lossy());
-	if path.is_file() {
+	if path.is_file() || path.is_symlink() {
 		builder.append_path_with_name(path, name)?;
 	} else if path.is_dir() {
 		let mut contents = Vec::new();
@@ -92,6 +92,7 @@ pub fn spawn_thread<W: Write + Send + 'static>(
 		} else {
 			Box::new(writer)
 		});
+		builder.follow_symlinks(false);
 		for path_ref in &config.paths {
 			let path = path_ref.canonicalize().unwrap_or_exit();
 			let name = Path::new(path.file_name().unwrap()).to_path_buf();
