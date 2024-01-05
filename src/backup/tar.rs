@@ -1,5 +1,5 @@
 use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}};
-use crate::{config::{TagKeepMode, Config}, error::ResultExt};
+use crate::{config::{TagKeepMode, config}, error::ResultExt};
 use super::bars::BarsHandler;
 use colored::Colorize;
 use tar::Builder;
@@ -7,9 +7,9 @@ use tar::Builder;
 pub fn scan_path(
 	path: PathBuf,
 	name: PathBuf,
-	config: &Config,
-	mut action: impl FnMut(PathBuf, PathBuf) -> io::Result<()>,
+	action: &mut impl FnMut(PathBuf, PathBuf) -> io::Result<()>,
 ) -> io::Result<()> {
+	let config = config!();
 	for pattern in &config.exclude {
 		if pattern.is_match(path.as_os_str().as_encoded_bytes()) {
 			return Ok(());
@@ -35,7 +35,7 @@ pub fn scan_path(
 		action(path, name.clone())?;
 		for entry in contents {
 			let entry_path = entry.path().to_path_buf();
-			scan_path(entry_path, name.join(entry.file_name()), config, |path, name| action(path, name))?;
+			scan_path(entry_path, name.join(entry.file_name()), action)?;
 		}
 	} else {
 		action(path, name)?;
@@ -45,9 +45,9 @@ pub fn scan_path(
 
 pub fn spawn_thread<W: Write + Send + 'static>(
 	writer: W,
-	config: Config,
 	bars_handler: &BarsHandler,
 ) -> JoinHandle<()> {
+	let config = config!();
 	let tar_bar = if config.progress_bars {
 		Some(bars_handler.tar_bar.clone())
 	} else {
@@ -60,12 +60,12 @@ pub fn spawn_thread<W: Write + Send + 'static>(
 			let path = path_ref.canonicalize().unwrap_or_exit();
 			let name = Path::new(path.file_name().unwrap()).to_path_buf();
 			if config.progress_bars {
-				scan_path(path, name, &config, |path, name| {
+				scan_path(path, name, &mut |path, name| {
 					tar_bar.as_ref().unwrap().inc(1);
 					builder.append_path_with_name(path, name)
 				})
 			} else {
-				scan_path(path, name, &config, |path, name| {
+				scan_path(path, name, &mut |path, name| {
 					builder.append_path_with_name(path, name)
 				})
 			}.unwrap_or_exit();

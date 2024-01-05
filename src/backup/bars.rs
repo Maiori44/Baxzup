@@ -1,6 +1,6 @@
 use std::{thread::{JoinHandle, self}, hint, time::Duration, io::Read, ops::Deref, path::PathBuf};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use crate::config::Config;
+use crate::config::config;
 use super::tar::scan_path;
 use xz2::read::XzEncoder;
 use colored::Colorize;
@@ -17,8 +17,8 @@ pub struct InternalBarsHandler {
 pub struct BarsHandler (Option<InternalBarsHandler>);
 
 impl BarsHandler {
-	pub fn new<R: Read>(config: &Config, compressor: *const XzEncoder<R>) -> Self {
-		if !config.progress_bars {
+	pub fn new<R: Read>(compressor: *const XzEncoder<R>) -> Self {
+		if !config!(progress_bars) {
 			return Self(None);
 		}
 		let multi = MultiProgress::new();
@@ -37,7 +37,6 @@ impl BarsHandler {
 		multi.add(tar_bar.clone());
 		multi.add(xz_bar.clone());
 		let compressor_ptr = compressor as usize;
-		let paths = config.paths.clone().into_iter().map(|path| path.canonicalize());
 		Self(Some(InternalBarsHandler {
 			xz_bar: xz_bar.clone(),
 			tar_bar: tar_bar.clone(),

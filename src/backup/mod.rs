@@ -1,5 +1,5 @@
 use xz2::{read::XzEncoder, stream::MtStreamBuilder};
-use crate::{config::Config, error::ResultExt};
+use crate::{config::config, error::ResultExt};
 use self::bars::BarsHandler;
 use std::{io, fs::File};
 use colored::Colorize;
@@ -7,7 +7,8 @@ use colored::Colorize;
 mod bars;
 mod tar;
 
-pub fn init(config: Config) -> io::Result<()> {
+pub fn init() -> io::Result<()> {
+	let config = config!();
 	let (reader, writer) = os_pipe::pipe()?;
 	let mut compressor = XzEncoder::new_stream(
 		reader,
@@ -18,10 +19,10 @@ pub fn init(config: Config) -> io::Result<()> {
 			.encoder()
 			.to_io_result()?
 	);
-	let bars_handler = BarsHandler::new(&config, &compressor);
+	let bars_handler = BarsHandler::new(&compressor);
 	let bars_enabled = config.progress_bars;
 	let mut output_file = File::options().read(true).write(true).create_new(true).open(&config.name)?;
-	let tar_thread = tar::spawn_thread(writer, config, &bars_handler);
+	let tar_thread = tar::spawn_thread(writer, &bars_handler);
 	io::copy(&mut compressor, &mut output_file)?;
 	if bars_enabled {
 		bars_handler.xz_bar.finish_with_message("Compressed ".green().bold().to_string());
