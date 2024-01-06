@@ -26,6 +26,8 @@ impl<T, E: Display> ResultExt<T> for Result<T, E> {
 
 pub fn handler(e: impl Display) -> ! {
 	eprintln!("{} {e}", "error:".red().bold());
+	#[cfg(feature = "pause")]
+	crate::pause();
 	process::exit(-1)
 }
 

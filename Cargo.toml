@@ -22,3 +22,7 @@ xz2 = "0.1.7"
 tar = "0.4.40"
 os_pipe = "1.1.5"
 indicatif = "0.17.7"
+
+[features]
+default = []
+pause = []
