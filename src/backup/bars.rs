@@ -73,6 +73,7 @@ impl BarsHandler {
 						});
 					}
 				}
+				xz_bar.inc_length(xz_bar.length().unwrap() / 30);
 			}),
 		}))
 	}
