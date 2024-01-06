@@ -4,7 +4,7 @@ use super::bars::BarsHandler;
 use colored::Colorize;
 use tar::Builder;
 
-fn failed_access(path: &PathBuf, e: &io::Error) -> bool {
+fn failed_access(path: &Path, e: &io::Error) -> bool {
 	let mut ignore = config!(ignore_unreadable_files).lock().unwrap();
 	if *ignore {
 		return true;
@@ -19,7 +19,7 @@ fn failed_access(path: &PathBuf, e: &io::Error) -> bool {
 	);
 	let mut choice = String::new();
 	io::stdin().read_line(&mut choice).unwrap_or_exit();
-	match choice.trim_start().as_bytes().get(0) {
+	match choice.trim_start().as_bytes().first() {
 		Some(byte) => match byte {
 			b'a' | b'A' => {
 				*ignore = true;
@@ -35,7 +35,7 @@ fn failed_access(path: &PathBuf, e: &io::Error) -> bool {
 pub fn scan_path(
 	path: PathBuf,
 	name: PathBuf,
-	failed_access: &impl Fn(&PathBuf, &io::Error) -> bool,
+	failed_access: &impl Fn(&Path, &io::Error) -> bool,
 	action: &mut impl FnMut(PathBuf, PathBuf) -> io::Result<()>,
 ) -> io::Result<()> {
 	let config = config!();

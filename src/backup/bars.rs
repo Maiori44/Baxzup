@@ -41,7 +41,7 @@ impl BarsHandler {
 		let bars_handler = Self {
 			xz_bar: xz_bar.clone(),
 			tar_bar: tar_bar.clone(),
-			multi: multi,
+			multi,
 			ticker: {
 				let xz_bar = xz_bar.clone();
 				thread::spawn(move || {
