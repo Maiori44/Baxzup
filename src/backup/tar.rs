@@ -58,6 +58,24 @@ pub fn spawn_thread<W: Write + Send + 'static>(
 		builder.follow_symlinks(config.follow_symlinks);
 		for path_ref in &config.paths {
 			let path = path_ref.canonicalize().unwrap_or_exit();
+			#[cfg(target_os = "windows")]
+			let name = match path.file_name() {
+				Some(name) => Path::new(name).to_path_buf(),
+				None => {
+					use regex::Regex;
+					let path_str = path.to_string_lossy();
+					let drive = Regex::new(r"[A-Z]:")
+						.unwrap()
+						.find(&path_str)
+						.unwrap()
+						.as_str();
+					let mut result = String::with_capacity(8);
+					result.push_str("drive ");
+					result.push_str(drive);
+					Path::new(&result).to_path_buf()
+				}
+			};
+			#[cfg(not(target_os = "windows"))]
 			let name = Path::new(path.file_name().unwrap()).to_path_buf();
 			if config.progress_bars {
 				scan_path(path, name, &mut |path, name| {
