@@ -100,7 +100,7 @@ pub(crate) use config;
 		.error(AnsiColor::Red.on_default().effects(Effects::BOLD))
 		.valid(AnsiColor::Cyan.on_default().effects(Effects::BOLD))
 		.invalid(AnsiColor::Yellow.on_default().effects(Effects::BOLD)),
-	about = format!("{}\nMade by {}", crate_description!(), crate_authors!()),
+	about = format!("{}\nMade by {}\n\n(CLI still unfinished!)", crate_description!(), crate_authors!()),
 	long_about = None
 )]
 struct Cli {
@@ -124,7 +124,7 @@ struct Cli {
 	)]
     config_path: PathBuf,
 
-	/// Don't print anything.
+	/// Don't print non-important messages.
 	#[arg(short, long)]
 	quiet: bool,
 }
@@ -271,18 +271,17 @@ fn parse_name_capture(caps: &Captures) -> String {
 
 pub fn init() -> Result<(), Box<dyn Error>> {
 	let cli = Cli::parse();
-	if cli.quiet {
-		unimplemented!();
-	}
 	let config_path_str = cli.config_path.to_string_lossy().cyan().bold();
 	if !cli.config_path.exists() {
-		println!("{} configuration file not found, generating default...", "notice:".cyan().bold());
+		if !cli.quiet {
+			println!("{} configuration file not found, generating default...", "notice:".cyan().bold());
+		}
 		if let Some(parent) = cli.config_path.parent() {
 			fs::create_dir_all(parent)?;
 		}
 		fs::write(&cli.config_path, default::get())?;
 		println!(
-"Configuration saved in '{config_path_str}'
+"Default configuration saved in '{config_path_str}'
 Create backup using default configuration? [{}/{}]",
 			"y".cyan().bold(),
 			"N".cyan().bold()
@@ -293,8 +292,10 @@ Create backup using default configuration? [{}/{}]",
 			process::exit(0);
 		}
 	}
-	print!("{} configuration... ('{config_path_str}')\r", "Loading".cyan().bold());
-	io::stdout().flush()?;
+	if !cli.quiet {
+		print!("{} configuration... ('{config_path_str}')\r", "Loading".cyan().bold());
+		io::stdout().flush()?;
+	}
 	let config: Table = toml::from_str(&fs::read_to_string(cli.config_path)?)?;
 	CONFIG.set(Config {
 		paths: parse_config_field!(config.backup.paths -> map!(
@@ -309,7 +310,11 @@ Create backup using default configuration? [{}/{}]",
 			"excluded tags must be arrays of arrays containing the path and the mode (both strings)",
 			value.as_array() -> parse_excluded_tag
 		)),
-		progress_bars: parse_config_field!(config.backup.progress_bars [default: true] -> bool),
+		progress_bars: if cli.quiet {
+			false
+		} else {
+			parse_config_field!(config.backup.progress_bars [default: true] -> bool)
+		},
 		follow_symlinks: parse_config_field!(config.backup.follow_symlinks [default: false] -> bool),
 		name: Regex::new(r"%(![a-z]+)?([^% ]*)?")?.replace_all(
 			&parse_config_field!(config.backup.name -> String),
@@ -319,6 +324,8 @@ Create backup using default configuration? [{}/{}]",
 		threads: parse_config_field!(config.xz.threads -> u32),
 		block_size: parse_config_field!(config.xz.block_size [default: 0] -> u64),
 	}).unwrap();
-	println!("{} loading configuration! ('{config_path_str}')", "Finished".green().bold());
+	if !cli.quiet {
+		println!("{} loading configuration! ('{config_path_str}')", "Finished".green().bold());
+	}
 	Ok(()) //TODO: finish cli
 }
