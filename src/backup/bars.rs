@@ -62,14 +62,18 @@ impl BarsHandler {
 				for path_ref in &config.paths {
 					if let Ok(path) = path_ref.canonicalize() {
 						let _ = scan_path(path, PathBuf::new(), &|_, _| true, &mut |path, _| {
-							if let Ok(meta) = if config.follow_symlinks {
-								path.metadata()
-							} else {
-								path.symlink_metadata()
-							} {
-								xz_bar.inc_length(meta.len());
+							if !xz_bar.is_finished() {
+								if let Ok(meta) = if config.follow_symlinks {
+									path.metadata()
+								} else {
+									path.symlink_metadata()
+								} {
+									xz_bar.inc_length(meta.len());
+								}
 							}
-							tar_bar.inc_length(1);
+							if !tar_bar.is_finished() {
+								tar_bar.inc_length(1);
+							}
 							Ok(())
 						});
 					}
