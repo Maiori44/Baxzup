@@ -111,10 +111,15 @@ struct Cli {
 		default_value(match config_dir() {
 			Some(mut dir) => {
 				dir.push(crate_name!());
-				dir.push("config.toml");
+				dir.push(crate_name!());
+				dir.set_extension("toml");
 				dir.into_os_string()
 			},
-			None => "config.toml".into(),
+			None => {
+				let mut str = OsString::from(crate_name!());
+				str.push(".toml");
+				str
+			},
 		})
 	)]
     config_path: PathBuf,
