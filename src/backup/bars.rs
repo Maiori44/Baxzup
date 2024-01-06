@@ -1,24 +1,25 @@
-use std::{thread::{JoinHandle, self}, hint, time::Duration, io::Read, ops::Deref, path::PathBuf};
+use std::{thread::{JoinHandle, self}, time::Duration, io::Read, sync::OnceLock, path::PathBuf};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use crate::config::config;
 use super::tar::scan_path;
 use xz2::read::XzEncoder;
 use colored::Colorize;
 
-pub struct InternalBarsHandler {
+#[derive(Debug)]
+pub struct BarsHandler {
 	pub xz_bar: ProgressBar,
 	pub tar_bar: ProgressBar,
-	_multi: MultiProgress,
+	pub multi: MultiProgress,
 	ticker: JoinHandle<()>,
 	loader: JoinHandle<()>,
 }
 
-pub struct BarsHandler (Option<InternalBarsHandler>);
+static mut BARS_HANDLER: OnceLock<BarsHandler> = OnceLock::new();
 
 impl BarsHandler {
-	pub fn new<R: Read>(compressor: *const XzEncoder<R>) -> Self {
-		if !config!(progress_bars) {
-			return Self(None);
+	pub fn init<R: Read>(compressor: *const XzEncoder<R>) {
+		if !*config!(progress_bars) {
+			return;
 		}
 		let multi = MultiProgress::new();
 		let tar_bar = ProgressBar::new(0).with_message("Archiving".cyan().bold().to_string()).with_style(
@@ -37,10 +38,10 @@ impl BarsHandler {
 		multi.add(xz_bar.clone());
 		multi.set_move_cursor(true);
 		let compressor_ptr = compressor as usize;
-		Self(Some(InternalBarsHandler {
+		let bars_handler = Self {
 			xz_bar: xz_bar.clone(),
 			tar_bar: tar_bar.clone(),
-			_multi: multi,
+			multi: multi,
 			ticker: {
 				let xz_bar = xz_bar.clone();
 				thread::spawn(move || {
@@ -60,8 +61,7 @@ impl BarsHandler {
 				let config = config!();
 				for path_ref in &config.paths {
 					if let Ok(path) = path_ref.canonicalize() {
-						unimplemented!();
-						/*let _ = scan_path(path, PathBuf::new(), &mut |path, _| {
+						let _ = scan_path(path, PathBuf::new(), &|_, _| true, &mut |path, _| {
 							if let Ok(meta) = if config.follow_symlinks {
 								path.metadata()
 							} else {
@@ -71,33 +71,46 @@ impl BarsHandler {
 							}
 							tar_bar.inc_length(1);
 							Ok(())
-						});*/
+						});
 					}
 				}
 				xz_bar.inc_length(xz_bar.length().unwrap() / 30);
 			}),
-		}))
-	}
-
-	pub fn end(self) {
-		// SAFETY: the program will always check Config.progress_bars before calling this.
+		};
+		// SAFETY: only the main thread calls this function
 		unsafe {
-			let internal = self.0.unwrap_unchecked();
-			internal.ticker.join().unwrap_unchecked();
-			internal.loader.join().unwrap_unchecked();
+			BARS_HANDLER.set(bars_handler).unwrap_unchecked()
 		}
 	}
-}
 
-impl Deref for BarsHandler {
-	type Target = InternalBarsHandler;
+	pub unsafe fn exec_unchecked<T>(f: impl FnOnce(&BarsHandler) -> T) -> T {
+		let bars_handler = BARS_HANDLER.get();
+		debug_assert!(bars_handler.is_some());
+		f(bars_handler.unwrap_unchecked())
+	}
 
-	fn deref(&self) -> &InternalBarsHandler {
-		debug_assert!(self.0.is_some());
-		match self.0 {
-			Some(ref bars_handler) => bars_handler,
-			// SAFETY: the program will always check Config.progress_bars before calling this.
-			None => unsafe { hint::unreachable_unchecked() },
+	pub fn exec<T>(f: impl FnOnce(&BarsHandler) -> T) -> Option<T> {
+		if *config!(progress_bars) {
+			// SAFETY: BARS_HANDLER will always contain a value when Config.progress_bars is true
+			unsafe {
+				Some(BarsHandler::exec_unchecked(f))
+			}
+		} else {
+			None
+		}
+	}
+
+	pub fn end(f: impl FnOnce(&BarsHandler)) {
+		if *config!(progress_bars) {
+			// SAFETY: BARS_HANDLER will always contain a value when Config.progress_bars is true
+			unsafe {
+				let bars_handler = BARS_HANDLER.take();
+				debug_assert!(bars_handler.is_some());
+				let bars_handler = bars_handler.unwrap_unchecked();
+				f(&bars_handler);
+				bars_handler.ticker.join().unwrap_unchecked();
+				bars_handler.loader.join().unwrap_unchecked();
+			}
 		}
 	}
 }

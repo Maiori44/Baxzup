@@ -19,18 +19,16 @@ pub fn init() -> io::Result<()> {
 			.encoder()
 			.to_io_result()?
 	);
-	let bars_handler = BarsHandler::new(&compressor);
-	let bars_enabled = config.progress_bars;
+	BarsHandler::init(&compressor);
 	let mut output_file = File::options().read(true).write(true).create_new(true).open(&config.name)?;
-	let tar_thread = tar::spawn_thread(writer, &bars_handler);
+	let tar_thread = tar::spawn_thread(writer);
 	io::copy(&mut compressor, &mut output_file)?;
-	if bars_enabled {
+	BarsHandler::end(|bars_handler| {
 		bars_handler.xz_bar.finish_with_message("Compressed ".green().bold().to_string());
 		if !bars_handler.tar_bar.is_finished() {
 			bars_handler.tar_bar.abandon_with_message("Archived?".yellow().bold().to_string());
 		}
-		bars_handler.end();
-	}
+	});
 	tar_thread.join().unwrap();
 	Ok(())
 }

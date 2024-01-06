@@ -1,55 +1,42 @@
-use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}, fs::Metadata};
+use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}};
 use crate::{config::{TagKeepMode, config}, error::ResultExt};
 use super::bars::BarsHandler;
 use colored::Colorize;
 use tar::Builder;
 
-trait GetSelf: Sized {
-	fn get_self(self) -> Self {
-		self
+fn failed_access(path: &PathBuf, e: &io::Error) -> bool {
+	let mut ignore = config!(ignore_unreadable_files).lock().unwrap();
+	if *ignore {
+		return true;
+	}
+	println!(
+		"{} could not access '{}' ({e}). How to proceed? [{}etry/{}gnore/ignore {}ll]",
+		"warning:".yellow().bold(),
+		path.to_string_lossy().cyan().bold(),
+		"R".cyan().bold(),
+		"i".cyan().bold(),
+		"a".cyan().bold(),
+	);
+	let mut choice = String::new();
+	io::stdin().read_line(&mut choice).unwrap_or_exit();
+	match choice.trim_start().as_bytes().get(0) {
+		Some(byte) => match byte {
+			b'a' | b'A' => {
+				*ignore = true;
+				true
+			}
+			b'i' | b'I' => true,
+			_ => false
+		},
+		None => false,
 	}
 }
 
-impl GetSelf for Metadata {}
-
-fn try_access<T: GetSelf>(path: &PathBuf, f: impl Fn(&Path) -> io::Result<T>) -> Option<T> {
-	match f(path) {
-		Ok(t) => Some(t),
-		Err(e) => {
-			let mut ignore = config!(ignore_unreadable_files).lock().unwrap();
-			if *ignore {
-				return None;
-			}
-			println!(
-				"{} could not access '{}' ({e}). How to proceed? [{}etry/{}gnore/ignore {}ll]",
-				"warning:".yellow().bold(),
-				path.to_string_lossy().cyan().bold(),
-				"R".cyan().bold(),
-				"i".cyan().bold(),
-				"a".cyan().bold(),
-			);
-			let mut choice = String::new();
-			io::stdin().read_line(&mut choice).unwrap_or_exit();
-			match choice.trim_start().as_bytes()[0].to_ascii_lowercase() {
-				b'i' => None,
-				b'a' => {
-					*ignore = true;
-					None
-				}
-				_ => {
-					drop(ignore);
-					try_access(path, f)
-				}
-			}
-		}
-	}
-}
-
-pub fn scan_path<T: GetSelf>(
+pub fn scan_path(
 	path: PathBuf,
 	name: PathBuf,
+	failed_access: &impl Fn(&PathBuf, &io::Error) -> bool,
 	action: &mut impl FnMut(PathBuf, PathBuf) -> io::Result<()>,
-	try_access: &impl Fn(&PathBuf, &dyn Fn(&Path) -> io::Result<dyn GetSelf>) -> Option<Box<dyn GetSelf>>,
 ) -> io::Result<()> {
 	let config = config!();
 	for pattern in &config.exclude {
@@ -59,10 +46,13 @@ pub fn scan_path<T: GetSelf>(
 	}
 
 	macro_rules! try_access {
-		(path.$f:ident()) => {
-			match try_access(&path, &Path::$f) {
-				Some(result) => result.get_self(),
-				None => return Ok(()),
+		($f:expr) => {
+			loop {
+				match $f {
+					Ok(result) => break result,
+					Err(e) if failed_access(&path, &e) => return Ok(()),
+					_ => {}
+				}
 			}
 		};
 	}
@@ -88,7 +78,7 @@ pub fn scan_path<T: GetSelf>(
 		action(path, name.clone())?;
 		for entry in contents {
 			let entry_path = entry.path().to_path_buf();
-			scan_path(entry_path, name.join(entry.file_name()), action)?;
+			scan_path(entry_path, name.join(entry.file_name()), failed_access, action)?;
 		}
 	} else {
 		action(path, name)?;
@@ -96,17 +86,9 @@ pub fn scan_path<T: GetSelf>(
 	Ok(())
 }
 
-pub fn spawn_thread<W: Write + Send + 'static>(
-	writer: W,
-	bars_handler: &BarsHandler,
-) -> JoinHandle<()> {
-	let config = config!();
-	let tar_bar = if config.progress_bars {
-		Some(bars_handler.tar_bar.clone())
-	} else {
-		None
-	};
+pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<()> {
 	thread::spawn(move || {
+		let config = config!();
 		let mut builder = Builder::new(writer);
 		builder.follow_symlinks(config.follow_symlinks);
 		for path_ref in &config.paths {
@@ -131,19 +113,28 @@ pub fn spawn_thread<W: Write + Send + 'static>(
 			#[cfg(not(target_os = "windows"))]
 			let name = Path::new(path.file_name().unwrap()).to_path_buf();
 			if config.progress_bars {
-				scan_path(path, name, &mut |path, name| {
-					tar_bar.as_ref().unwrap().inc(1);
+				scan_path(path, name, &|path, e| {
+					// SAFETY: BARS_HANDLER will always contain a value when Config.progress_bars is true
+					unsafe {
+						BarsHandler::exec_unchecked(|bars_handler| {
+							bars_handler.multi.suspend(|| failed_access(path, e))
+						})
+					}
+				}, &mut |path, name| {
+					BarsHandler::exec(|bars_handler| {
+						bars_handler.tar_bar.inc(1);
+					});
 					builder.append_path_with_name(path, name)
-				}, &try_access)
+				})
 			} else {
-				scan_path(path, name, &mut |path, name| {
+				scan_path(path, name, &failed_access, &mut |path, name| {
 					builder.append_path_with_name(path, name)
-				}, &try_access)
+				})
 			}.unwrap_or_exit();
 		}
-		if config.progress_bars {
-			tar_bar.unwrap().finish_with_message("Archived ".green().bold().to_string());
-		}
+		BarsHandler::exec(|bars_handler| {
+			bars_handler.tar_bar.finish_with_message("Archived ".green().bold().to_string());
+		});
 		builder.finish().unwrap_or_exit();
 	})
 }
