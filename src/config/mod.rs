@@ -2,7 +2,7 @@ use std::{
 	path::PathBuf,
 	process,
 	io::{self, Read, Write},
-	sync::OnceLock,
+	sync::{OnceLock, Mutex},
 	error::Error,
 	str::FromStr,
 	fmt::{Debug, Display},
@@ -42,7 +42,7 @@ macro_rules! parse_config_field {
 	($name:ident.$i1:ident.$i2:ident -> $type:ident) => {
 		parse_config_field!($name.$i1.$i2).clone().try_into::<$type>()?
 	};
-	($name:ident.$i1:ident.$i2:ident [default: $default:expr] -> $type:ident) => {
+	($name:ident.$i1:ident.$i2:ident [default: $default:expr] -> $type:ty) => {
 		match parse_config_field!($name.$i1.$i2?) {
 			Some(field) => field.clone().try_into::<$type>()?,
 			None => $default,
@@ -165,6 +165,7 @@ pub struct Config {
 	pub exclude_tags: HashMap<OsString, TagKeepMode>,
 	pub progress_bars: bool,
 	pub follow_symlinks: bool,
+	pub ignore_unreadable_files: Mutex<bool>,
 	pub name: String,
 	pub level: u32,
 	pub threads: u32,
@@ -316,6 +317,9 @@ Create backup using default configuration? [{}/{}]",
 			parse_config_field!(config.backup.progress_bars [default: true] -> bool)
 		},
 		follow_symlinks: parse_config_field!(config.backup.follow_symlinks [default: false] -> bool),
+		ignore_unreadable_files: parse_config_field!(
+			config.backup.ignore_unreadable_files [default: Mutex::new(false)] -> Mutex<bool>
+		),
 		name: Regex::new(r"%(![a-z]+)?([^% ]*)?")?.replace_all(
 			&parse_config_field!(config.backup.name -> String),
 			parse_name_capture

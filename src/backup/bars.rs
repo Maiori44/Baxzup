@@ -60,7 +60,8 @@ impl BarsHandler {
 				let config = config!();
 				for path_ref in &config.paths {
 					if let Ok(path) = path_ref.canonicalize() {
-						let _ = scan_path(path, PathBuf::new(), &mut |path, _| {
+						unimplemented!();
+						/*let _ = scan_path(path, PathBuf::new(), &mut |path, _| {
 							if let Ok(meta) = if config.follow_symlinks {
 								path.metadata()
 							} else {
@@ -70,7 +71,7 @@ impl BarsHandler {
 							}
 							tar_bar.inc_length(1);
 							Ok(())
-						});
+						});*/
 					}
 				}
 				xz_bar.inc_length(xz_bar.length().unwrap() / 30);

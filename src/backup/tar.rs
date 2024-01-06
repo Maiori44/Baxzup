@@ -1,13 +1,55 @@
-use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}};
+use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}, fs::Metadata};
 use crate::{config::{TagKeepMode, config}, error::ResultExt};
 use super::bars::BarsHandler;
 use colored::Colorize;
 use tar::Builder;
 
-pub fn scan_path(
+trait GetSelf: Sized {
+	fn get_self(self) -> Self {
+		self
+	}
+}
+
+impl GetSelf for Metadata {}
+
+fn try_access<T: GetSelf>(path: &PathBuf, f: impl Fn(&Path) -> io::Result<T>) -> Option<T> {
+	match f(path) {
+		Ok(t) => Some(t),
+		Err(e) => {
+			let mut ignore = config!(ignore_unreadable_files).lock().unwrap();
+			if *ignore {
+				return None;
+			}
+			println!(
+				"{} could not access '{}' ({e}). How to proceed? [{}etry/{}gnore/ignore {}ll]",
+				"warning:".yellow().bold(),
+				path.to_string_lossy().cyan().bold(),
+				"R".cyan().bold(),
+				"i".cyan().bold(),
+				"a".cyan().bold(),
+			);
+			let mut choice = String::new();
+			io::stdin().read_line(&mut choice).unwrap_or_exit();
+			match choice.trim_start().as_bytes()[0].to_ascii_lowercase() {
+				b'i' => None,
+				b'a' => {
+					*ignore = true;
+					None
+				}
+				_ => {
+					drop(ignore);
+					try_access(path, f)
+				}
+			}
+		}
+	}
+}
+
+pub fn scan_path<T: GetSelf>(
 	path: PathBuf,
 	name: PathBuf,
 	action: &mut impl FnMut(PathBuf, PathBuf) -> io::Result<()>,
+	try_access: &impl Fn(&PathBuf, &dyn Fn(&Path) -> io::Result<dyn GetSelf>) -> Option<Box<dyn GetSelf>>,
 ) -> io::Result<()> {
 	let config = config!();
 	for pattern in &config.exclude {
@@ -15,9 +57,20 @@ pub fn scan_path(
 			return Ok(());
 		}
 	}
-	if path.is_dir() && (config.follow_symlinks || !path.is_symlink()) {
+
+	macro_rules! try_access {
+		(path.$f:ident()) => {
+			match try_access(&path, &Path::$f) {
+				Some(result) => result.get_self(),
+				None => return Ok(()),
+			}
+		};
+	}
+
+	let meta = try_access!(path.metadata());
+	if meta.is_dir() && (config.follow_symlinks || !meta.is_symlink()) {
 		let mut contents = Vec::new();
-		for entry in path.read_dir()? {
+		for entry in try_access!(path.read_dir()) {
 			let entry = entry?;
 			if let Some(mode) = config.exclude_tags.get(&entry.file_name()).copied() {
 				if mode == TagKeepMode::None {
@@ -81,11 +134,11 @@ pub fn spawn_thread<W: Write + Send + 'static>(
 				scan_path(path, name, &mut |path, name| {
 					tar_bar.as_ref().unwrap().inc(1);
 					builder.append_path_with_name(path, name)
-				})
+				}, &try_access)
 			} else {
 				scan_path(path, name, &mut |path, name| {
 					builder.append_path_with_name(path, name)
-				})
+				}, &try_access)
 			}.unwrap_or_exit();
 		}
 		if config.progress_bars {
