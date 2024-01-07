@@ -36,7 +36,7 @@ impl BarsHandler {
 		);
 		multi.add(tar_bar.clone());
 		multi.add(xz_bar.clone());
-		//multi.set_move_cursor(true);
+		multi.set_move_cursor(true);
 		let compressor_ptr = compressor as usize;
 		let bars_handler = Self {
 			xz_bar: xz_bar.clone(),
@@ -46,13 +46,17 @@ impl BarsHandler {
 				let xz_bar = xz_bar.clone();
 				thread::spawn(move || {
 					let interval_duration = Duration::from_millis(166);
+					let mut counter = 0u8;
 					// SAFETY: this awful hack is "fine" because the compressor is dropped after the thread.
 					let compressor = unsafe { &*(compressor_ptr as *mut XzEncoder<R>) };
 					loop {
 						xz_bar.set_position(compressor.total_in());
-						xz_bar.suspend(|| {
-							BarsHandler::redo_terminal();
-						});
+						counter = counter.wrapping_add(1);
+						if counter & 16 == 0 {
+							xz_bar.suspend(|| {
+								BarsHandler::redo_terminal();
+							});
+						}
 						thread::sleep(interval_duration);
 						if xz_bar.is_finished() {
 							break;
