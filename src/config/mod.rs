@@ -1,7 +1,7 @@
 use std::{
 	path::PathBuf,
 	process,
-	io::{self, Read, Write},
+	io::{self, Write},
 	sync::{OnceLock, Mutex},
 	error::Error,
 	str::FromStr,
@@ -287,9 +287,9 @@ Create backup using default configuration? [{}/{}]",
 			"y".cyan().bold(),
 			"N".cyan().bold()
 		);
-		let mut choice = [0];
-		io::stdin().read_exact(&mut choice)?;
-		if choice[0].to_ascii_lowercase() != b'y' {
+		let mut choice = String::new();
+		io::stdin().read_line(&mut choice)?;
+		if !choice.trim_start().as_bytes().first().is_some_and(|byte| byte.to_ascii_lowercase() == b'y') {
 			process::exit(0);
 		}
 	}
