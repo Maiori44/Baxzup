@@ -1,4 +1,4 @@
-use std::{io, fmt::Display, process, panic::PanicInfo, fs, backtrace::Backtrace};
+use std::{io, fmt::Display, process, panic::PanicInfo, fs, backtrace::{Backtrace, BacktraceStatus}};
 use crate::backup::bars::BarsHandler;
 use chrono::Local;
 use colored::Colorize;
@@ -30,6 +30,10 @@ pub fn handler(e: impl Display) -> ! {
 		bars_handler.tar_bar.abandon();
 	});
 	eprintln!("{} {e}", "error:".red().bold());
+	let backtrace = Backtrace::capture();
+	if backtrace.status() == BacktraceStatus::Captured {
+		eprintln!("{backtrace}");
+	}
 	#[cfg(feature = "pause")]
 	crate::pause();
 	process::exit(-1)

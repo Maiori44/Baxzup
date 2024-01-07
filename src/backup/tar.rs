@@ -36,7 +36,7 @@ pub fn scan_path(
 	path: PathBuf,
 	name: PathBuf,
 	failed_access: &impl Fn(&Path, &io::Error) -> bool,
-	action: &mut impl FnMut(PathBuf, PathBuf) -> io::Result<()>,
+	action: &mut impl FnMut(&PathBuf, &PathBuf) -> io::Result<()>,
 ) -> io::Result<()> {
 	let config = config!();
 	for pattern in &config.exclude {
@@ -75,13 +75,13 @@ pub fn scan_path(
 			}
 			contents.push(entry);
 		}
-		action(path, name.clone())?;
+		try_access!(action(&path, &name));
 		for entry in contents {
 			let entry_path = entry.path().to_path_buf();
 			scan_path(entry_path, name.join(entry.file_name()), failed_access, action)?;
 		}
 	} else {
-		action(path, name)?;
+		try_access!(action(&path, &name));
 	}
 	Ok(())
 }
