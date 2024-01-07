@@ -329,6 +329,9 @@ Create backup using default configuration? [{}/{}]",
 		block_size: parse_config_field!(config.xz.block_size [default: 0] -> u64),
 	}).unwrap();
 	if !cli.quiet {
+		if *config!(progress_bars) {
+			print!("\x1b[2J\x1b[H");
+		}
 		println!("{} loading configuration! ('{config_path_str}')", "Finished".green().bold());
 	}
 	Ok(()) //TODO: finish cli

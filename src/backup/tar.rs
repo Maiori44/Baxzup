@@ -10,7 +10,7 @@ fn failed_access(path: &Path, e: &io::Error) -> bool {
 		return true;
 	}
 	println!(
-		"{} could not access '{}' ({e}). How to proceed? [{}etry/{}gnore/ignore {}ll]",
+		"{} could not access '{}' ({e}).\nHow to proceed? [{}etry/{}gnore/ignore {}ll]",
 		"warning:".yellow().bold(),
 		path.to_string_lossy().cyan().bold(),
 		"R".cyan().bold(),
@@ -116,9 +116,11 @@ pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<()> {
 				scan_path(path, name, &|path, e| {
 					// SAFETY: BARS_HANDLER will always contain a value when Config.progress_bars is true
 					unsafe {
-						BarsHandler::exec_unchecked(|bars_handler| {
-							bars_handler.multi.suspend(|| failed_access(path, e))
-						})
+						BarsHandler::exec_unchecked(|bars_handler| bars_handler.multi.suspend(|| {
+							let ignore = failed_access(path, e);
+							BarsHandler::redo_terminal();
+							ignore
+						}))
 					}
 				}, &mut |path, name| {
 					BarsHandler::exec(|bars_handler| {

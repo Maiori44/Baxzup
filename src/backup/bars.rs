@@ -1,4 +1,4 @@
-use std::{thread::{JoinHandle, self}, time::Duration, io::{Read, self}, sync::OnceLock, path::PathBuf};
+use std::{thread::{JoinHandle, self}, time::Duration, io::{Read, self, Write}, sync::OnceLock, path::PathBuf};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use crate::config::config;
 use super::tar::scan_path;
@@ -36,7 +36,7 @@ impl BarsHandler {
 		);
 		multi.add(tar_bar.clone());
 		multi.add(xz_bar.clone());
-		multi.set_move_cursor(true);
+		//multi.set_move_cursor(true);
 		let compressor_ptr = compressor as usize;
 		let bars_handler = Self {
 			xz_bar: xz_bar.clone(),
@@ -50,6 +50,9 @@ impl BarsHandler {
 					let compressor = unsafe { &*(compressor_ptr as *mut XzEncoder<R>) };
 					loop {
 						xz_bar.set_position(compressor.total_in());
+						xz_bar.suspend(|| {
+							BarsHandler::redo_terminal();
+						});
 						thread::sleep(interval_duration);
 						if xz_bar.is_finished() {
 							break;
@@ -123,5 +126,10 @@ impl BarsHandler {
 				bars_handler.loader.join().unwrap_unchecked();
 			}
 		}
+	}
+
+	pub fn redo_terminal() {
+		print!("\x1b[2;1H\x1B[0J");
+		let _ = io::stdout().flush();
 	}
 }
