@@ -57,7 +57,11 @@ pub fn scan_path(
 		};
 	}
 
-	let meta = try_access!(path.metadata());
+	let meta = try_access!(if config.follow_symlinks {
+		path.metadata()
+	} else {
+		path.symlink_metadata()
+	});
 	if meta.is_dir() && (config.follow_symlinks || !meta.is_symlink()) {
 		let mut contents = Vec::new();
 		for entry in try_access!(path.read_dir()) {
