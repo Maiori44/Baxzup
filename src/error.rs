@@ -1,7 +1,7 @@
 use std::{io, fmt::Display, process, panic::PanicInfo, fs, backtrace::Backtrace};
+use crate::backup::bars::BarsHandler;
 use chrono::Local;
 use colored::Colorize;
-
 pub trait ResultExt<T> {
 	fn unwrap_or_exit(self) -> T;
 
@@ -25,6 +25,10 @@ impl<T, E: Display> ResultExt<T> for Result<T, E> {
 }
 
 pub fn handler(e: impl Display) -> ! {
+	BarsHandler::end(|bars_handler| {
+		bars_handler.xz_bar.abandon();
+		bars_handler.tar_bar.abandon();
+	});
 	eprintln!("{} {e}", "error:".red().bold());
 	#[cfg(feature = "pause")]
 	crate::pause();

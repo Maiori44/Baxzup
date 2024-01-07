@@ -4,7 +4,7 @@ use self::bars::BarsHandler;
 use std::{io, fs::File};
 use colored::Colorize;
 
-mod bars;
+pub mod bars;
 mod tar;
 
 pub fn init() -> io::Result<()> {

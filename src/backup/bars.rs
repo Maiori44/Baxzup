@@ -1,4 +1,4 @@
-use std::{thread::{JoinHandle, self}, time::Duration, io::Read, sync::OnceLock, path::PathBuf};
+use std::{thread::{JoinHandle, self}, time::Duration, io::{Read, self}, sync::OnceLock, path::PathBuf};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use crate::config::config;
 use super::tar::scan_path;
@@ -62,6 +62,7 @@ impl BarsHandler {
 				for path_ref in &config.paths {
 					if let Ok(path) = path_ref.canonicalize() {
 						let _ = scan_path(path, PathBuf::new(), &|_, _| true, &mut |path, _| {
+							let mut updated_bars = 0;
 							if !xz_bar.is_finished() {
 								if let Ok(meta) = if config.follow_symlinks {
 									path.metadata()
@@ -70,11 +71,17 @@ impl BarsHandler {
 								} {
 									xz_bar.inc_length(meta.len());
 								}
+								updated_bars += 1;
 							}
 							if !tar_bar.is_finished() {
 								tar_bar.inc_length(1);
+								updated_bars += 1;
 							}
-							Ok(())
+							if updated_bars == 0 {
+								Err(io::Error::other(""))
+							} else {
+								Ok(())
+							}
 						});
 					}
 				}
