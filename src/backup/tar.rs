@@ -1,4 +1,4 @@
-use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}};
+use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}, ffi::OsStr};
 use crate::{config::{TagKeepMode, config}, error::ResultExt};
 use super::bars::BarsHandler;
 use colored::Colorize;
@@ -62,6 +62,7 @@ pub fn scan_path(
 	} else {
 		path.symlink_metadata()
 	});
+	println!("{} {}", meta.is_dir(), meta.is_symlink());
 	if meta.is_dir() && (config.follow_symlinks || !meta.is_symlink()) {
 		let mut contents = Vec::new();
 		for entry in try_access!(path.read_dir()) {
@@ -115,7 +116,7 @@ pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<()> {
 				}
 			};
 			#[cfg(not(target_os = "windows"))]
-			let name = Path::new(path.file_name().unwrap()).to_path_buf();
+			let name = Path::new(path.file_name().unwrap_or_else(|| OsStr::new("root"))).to_path_buf();
 			if config.progress_bars {
 				scan_path(path, name, &|path, e| {
 					// SAFETY: BARS_HANDLER will always contain a value when Config.progress_bars is true
