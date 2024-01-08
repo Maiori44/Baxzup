@@ -25,7 +25,7 @@ impl<T, E: Display> ResultExt<T> for Result<T, E> {
 }
 
 pub fn handler(e: impl Display) -> ! {
-	BarsHandler::end(|bars_handler| {
+	BarsHandler::exec(|bars_handler| {
 		bars_handler.xz_bar.abandon();
 		bars_handler.tar_bar.abandon();
 	});
