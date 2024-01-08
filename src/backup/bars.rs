@@ -1,4 +1,4 @@
-use std::{thread::{JoinHandle, self}, time::Duration, io::{Read, self, Write}, sync::OnceLock, path::PathBuf};
+use std::{thread::{JoinHandle, self}, time::Duration, io::{Read, self, Write}, sync::{OnceLock, RwLock}, path::PathBuf};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use crate::config::config;
 use super::tar::scan_path;
@@ -14,7 +14,7 @@ pub struct BarsHandler {
 	loader: JoinHandle<()>,
 }
 
-static mut BARS_HANDLER: OnceLock<BarsHandler> = OnceLock::new();
+static BARS_HANDLER: RwLock<OnceLock<BarsHandler>> = RwLock::new(OnceLock::new());
 
 impl BarsHandler {
 	pub fn init<R: Read>(compressor: *const XzEncoder<R>) {
@@ -95,40 +95,28 @@ impl BarsHandler {
 				xz_bar.inc_length(xz_bar.length().unwrap() / 30);
 			}),
 		};
-		// SAFETY: only the main thread calls this function
-		unsafe {
-			BARS_HANDLER.set(bars_handler).unwrap_unchecked()
-		}
+		BARS_HANDLER.write().unwrap().set(bars_handler).unwrap();
 	}
 
 	pub unsafe fn exec_unchecked<T>(f: impl FnOnce(&BarsHandler) -> T) -> T {
-		let bars_handler = BARS_HANDLER.get();
-		debug_assert!(bars_handler.is_some());
-		f(bars_handler.unwrap_unchecked())
+		let bars_handler = BARS_HANDLER.read().unwrap();
+		debug_assert!(bars_handler.get().is_some());
+		f(bars_handler.get().unwrap_unchecked())
 	}
 
 	pub fn exec<T>(f: impl FnOnce(&BarsHandler) -> T) -> Option<T> {
-		if *config!(progress_bars) {
-			// SAFETY: BARS_HANDLER will always contain a value when Config.progress_bars is true
-			unsafe {
-				Some(BarsHandler::exec_unchecked(f))
-			}
+		if let Some(bars_handler) = BARS_HANDLER.read().unwrap().get() {
+			Some(f(bars_handler))
 		} else {
 			None
 		}
 	}
 
 	pub fn end(f: impl FnOnce(&BarsHandler)) {
-		if *config!(progress_bars) {
-			// SAFETY: BARS_HANDLER will always contain a value when Config.progress_bars is true
-			unsafe {
-				let bars_handler = BARS_HANDLER.take();
-				debug_assert!(bars_handler.is_some());
-				let bars_handler = bars_handler.unwrap_unchecked();
-				f(&bars_handler);
-				bars_handler.ticker.join().unwrap_unchecked();
-				bars_handler.loader.join().unwrap_unchecked();
-			}
+		if let Some(bars_handler) = BARS_HANDLER.write().unwrap().take() {
+			f(&bars_handler);
+			bars_handler.ticker.join().unwrap();
+			bars_handler.loader.join().unwrap();
 		}
 	}
 
