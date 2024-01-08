@@ -62,7 +62,6 @@ pub fn scan_path(
 	} else {
 		path.symlink_metadata()
 	});
-	println!("{} {}", meta.is_dir(), meta.is_symlink());
 	if meta.is_dir() && (config.follow_symlinks || !meta.is_symlink()) {
 		let mut contents = Vec::new();
 		for entry in try_access!(path.read_dir()) {
