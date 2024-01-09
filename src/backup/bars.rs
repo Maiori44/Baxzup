@@ -115,8 +115,13 @@ impl BarsHandler {
 	pub fn end(f: impl FnOnce(&BarsHandler)) {
 		if let Some(bars_handler) = BARS_HANDLER.write().unwrap().take() {
 			f(&bars_handler);
-			bars_handler.ticker.join().unwrap();
-			bars_handler.loader.join().unwrap();
+			let thread_id = thread::current().id();
+			if bars_handler.ticker.thread().id() != thread_id {
+				bars_handler.ticker.join().unwrap();
+			}
+			if bars_handler.loader.thread().id() != thread_id {
+				bars_handler.loader.join().unwrap();
+			}
 		}
 	}
 
