@@ -32,7 +32,7 @@ pub fn get() -> String {
 	let mut config = toml! {
 		[backup]
 		paths = []
-		exclude = ["(?i)cache"]
+		exclude = ["?/cache/i"]
 		exclude_tags = [["CACHEDIR.TAG", "keep-tag"]]
 		progress_bars = true
 		follow_symlinks = false

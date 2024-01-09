@@ -303,10 +303,29 @@ Create backup using default configuration? [{}/{}]",
 			"paths must be strings",
 			value.as_str() -> |s| Ok(PathBuf::from_str(s).unwrap_or_exit())
 		)),
-		exclude: parse_config_field!(config.backup.exclude -> map!(
+		exclude: {
+			let regex_finder = Regex::new(r"^\?/(.*)/([imsUx]+)?$")?;
+			let escape_regex = Regex::new(r"[-\[\]{}()*+?.,\\^$|#]")?;
+			parse_config_field!(config.backup.exclude -> map!(
+				"excluded patterns must be strings",
+				value.as_str() -> |s| {
+					Ok(bytes::Regex::new(&match regex_finder.captures(s) {
+						Some(captures) => [
+							captures.get(2).map_or_else(
+								|| String::new(),
+								|m| format!("(?{})", m.as_str())
+							),
+							captures.get(1).unwrap().as_str().to_string()
+						].into_iter().collect::<String>(),
+						None => escape_regex.replace_all(s, "\\$0").to_string(),
+					}).unwrap_or_exit())
+				}
+			))
+		},
+		/*exclude: parse_config_field!(config.backup.exclude -> map!(
 			"excluded patterns must be strings",
 			value.as_str() -> |s| Ok(bytes::Regex::new(s).unwrap_or_exit())
-		)),
+		)),*/
 		exclude_tags: parse_config_field!(config.backup.exclude_tags -> map!(
 			"excluded tags must be arrays of arrays containing the path and the mode (both strings)",
 			value.as_array() -> parse_excluded_tag
