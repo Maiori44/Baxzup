@@ -1,11 +1,28 @@
 use xz2::{read::XzEncoder, stream::MtStreamBuilder};
-use crate::{config::config, error::ResultExt};
+use crate::{config::{config, Config}, error::ResultExt};
 use self::bars::BarsHandler;
 use std::{io, fs::File};
 use colored::Colorize;
 
 pub mod bars;
 mod tar;
+
+#[cfg(target_os = "windows")]
+pub type OutputFileID = ();
+
+#[cfg(target_os = "windows")]
+pub fn get_output_file_id(_: &Config) -> OutputFileID {}
+
+#[cfg(not(target_os = "windows"))]
+pub type OutputFileID = (u64, u64);
+
+#[cfg(not(target_os = "windows"))]
+pub fn get_output_file_id(config: &Config) -> OutputFileID {
+    use std::{fs, os::unix::fs::MetadataExt};
+
+	let meta = fs::metadata(&config.name).unwrap_or_exit();
+	(meta.dev(), meta.ino())
+}
 
 pub fn init() -> io::Result<()> {
 	let config = config!();

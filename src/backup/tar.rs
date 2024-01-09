@@ -1,6 +1,6 @@
-use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}, ffi::OsStr};
+use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}};
 use crate::{config::{TagKeepMode, config}, error::ResultExt};
-use super::bars::BarsHandler;
+use super::{bars::BarsHandler, OutputFileID, get_output_file_id};
 use colored::Colorize;
 use tar::Builder;
 
@@ -33,6 +33,7 @@ fn failed_access(path: &Path, e: &io::Error) -> bool {
 }
 
 pub fn scan_path(
+	output_file_id: OutputFileID,
 	path: PathBuf,
 	name: PathBuf,
 	failed_access: &impl Fn(&Path, &io::Error) -> bool,
@@ -62,6 +63,14 @@ pub fn scan_path(
 	} else {
 		path.symlink_metadata()
 	});
+	#[cfg(not(target_os = "windows"))]
+	{
+		use std::os::unix::fs::MetadataExt;
+
+		if output_file_id == (meta.dev(), meta.ino()) {
+			return Ok(());
+		}
+	}
 	if meta.is_dir() && (config.follow_symlinks || !meta.is_symlink()) {
 		let mut contents = Vec::new();
 		for entry in try_access!(path.read_dir()) {
@@ -82,7 +91,7 @@ pub fn scan_path(
 		try_access!(action(&path, &name));
 		for entry in contents {
 			let entry_path = entry.path().to_path_buf();
-			scan_path(entry_path, name.join(entry.file_name()), failed_access, action)?;
+			scan_path(output_file_id, entry_path, name.join(entry.file_name()), failed_access, action)?;
 		}
 	} else {
 		try_access!(action(&path, &name));
@@ -115,9 +124,10 @@ pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<()> {
 				}
 			};
 			#[cfg(not(target_os = "windows"))]
-			let name = Path::new(path.file_name().unwrap_or_else(|| OsStr::new("root"))).to_path_buf();
+			let name = Path::new(path.file_name().unwrap_or_else(|| std::ffi::OsStr::new("root"))).to_path_buf();
+			let output_file_id = get_output_file_id(config);
 			if config.progress_bars {
-				scan_path(path, name, &|path, e| {
+				scan_path(output_file_id, path, name, &|path, e| {
 					// SAFETY: BARS_HANDLER will always contain a value when Config.progress_bars is true
 					unsafe {
 						BarsHandler::exec_unchecked(|bars_handler| bars_handler.multi.suspend(|| {
@@ -133,7 +143,7 @@ pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<()> {
 					builder.append_path_with_name(path, name)
 				})
 			} else {
-				scan_path(path, name, &failed_access, &mut |path, name| {
+				scan_path(output_file_id, path, name, &failed_access, &mut |path, name| {
 					builder.append_path_with_name(path, name)
 				})
 			}.unwrap_or_exit();
