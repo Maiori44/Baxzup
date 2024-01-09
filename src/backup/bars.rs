@@ -105,11 +105,7 @@ impl BarsHandler {
 	}
 
 	pub fn exec<T>(f: impl FnOnce(&BarsHandler) -> T) -> Option<T> {
-		if let Some(bars_handler) = BARS_HANDLER.read().unwrap().get() {
-			Some(f(bars_handler))
-		} else {
-			None
-		}
+		BARS_HANDLER.read().unwrap().get().map(|bars_handler| f(bars_handler))
 	}
 
 	pub fn end(f: impl FnOnce(&BarsHandler)) {
