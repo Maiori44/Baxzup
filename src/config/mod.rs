@@ -311,10 +311,7 @@ Create backup using default configuration? [{}/{}]",
 				value.as_str() -> |s| {
 					Ok(bytes::Regex::new(&match regex_finder.captures(s) {
 						Some(captures) => [
-							captures.get(2).map_or_else(
-								|| String::new(),
-								|m| format!("(?{})", m.as_str())
-							),
+							captures.get(2).map_or_else(String::new, |m| format!("(?{})", m.as_str())),
 							captures.get(1).unwrap().as_str().to_string()
 						].into_iter().collect::<String>(),
 						None => escape_regex.replace_all(s, "\\$0").to_string(),
