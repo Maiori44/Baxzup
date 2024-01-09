@@ -36,6 +36,7 @@ pub fn get() -> String {
 		exclude_tags = [["CACHEDIR.TAG", "keep-tag"]]
 		progress_bars = true
 		follow_symlinks = false
+		ignore_unreadable_files = false
 		name = "%!hostname(%m-%y).tar.xz"
 
 		[xz]
