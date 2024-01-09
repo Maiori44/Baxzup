@@ -23,6 +23,9 @@ tar = "0.4.40"
 os_pipe = "1.1.5"
 indicatif = "0.17.7"
 
+[target.'cfg(windows)'.dependencies]
+fs4 = "0.7.0"
+
 [features]
 default = []
 pause = []

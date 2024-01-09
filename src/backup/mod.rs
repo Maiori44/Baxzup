@@ -21,6 +21,11 @@ pub fn init() -> io::Result<()> {
 	);
 	BarsHandler::init(&compressor);
 	let mut output_file = File::options().read(true).write(true).create_new(true).open(&config.name)?;
+	#[cfg(target_os = "windows")]
+	{
+		use fs4::FileExt;
+		output_file.try_lock_exclusive()?;
+	}
 	let tar_thread = tar::spawn_thread(writer);
 	io::copy(&mut compressor, &mut output_file)?;
 	BarsHandler::end(|bars_handler| {
