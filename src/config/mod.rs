@@ -133,8 +133,7 @@ struct Item<'a> (chrono::format::Item<'a>);
 
 impl Display for Item<'_> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		static DATE: OnceLock<DateTime<Local>> = OnceLock::new();
-		let date = DATE.get_or_init(Local::now);
+		let date = Local::now();
 		let offset = date.offset();
 		chrono::format::format_item(
 			f,
@@ -198,16 +197,15 @@ fn parse_excluded_tag(value: &Array) -> Result<(OsString, TagKeepMode), &'static
 	))
 }
 
-fn get_user() -> &'static Option<&'static User> {
+fn get_user() -> Option<&'static User> {
 	static USERS: OnceLock<Users> = OnceLock::new();
-	static USER: OnceLock<Option<&User>> = OnceLock::new();
-	USER.get_or_init(|| USERS.get_or_init(Users::new_with_refreshed_list).get_user_by_id(
+	USERS.get_or_init(Users::new_with_refreshed_list).get_user_by_id(
 		System::new_with_specifics(RefreshKind::new()
 			.with_processes(ProcessRefreshKind::new().with_user(sysinfo::UpdateKind::Always)))
 			.process(sysinfo::get_current_pid().unwrap())
 			.unwrap()
 			.user_id()?
-	))
+	)
 }
 
 fn unknown() -> String {
