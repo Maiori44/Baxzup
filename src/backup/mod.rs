@@ -1,7 +1,7 @@
 use xz2::{read::XzEncoder, stream::MtStreamBuilder};
-use crate::{config::{config, Config}, error::ResultExt};
+use crate::{config::{config, Config}, error::ResultExt, input};
 use self::bars::BarsHandler;
-use std::{io, fs::File};
+use std::{io, fs::{self, File}, path::Path, process};
 use colored::Colorize;
 
 pub mod bars;
@@ -18,7 +18,7 @@ pub type OutputFileID = (u64, u64);
 
 #[cfg(not(target_os = "windows"))]
 pub fn get_output_file_id(config: &Config) -> OutputFileID {
-    use std::{fs, os::unix::fs::MetadataExt};
+    use std::os::unix::fs::MetadataExt;
 
 	let meta = fs::metadata(&config.name).unwrap_or_exit();
 	(meta.dev(), meta.ino())
@@ -36,8 +36,28 @@ pub fn init() -> io::Result<()> {
 			.encoder()
 			.to_io_result()?
 	);
+	let mut output_file = if config.force_overwrite {
+		File::create(&config.name)?
+	} else {
+		if AsRef::<Path>::as_ref(&config.name).exists() {
+			input!(format!(
+				"{} a file named '{}' already exists\nOverwrite? [{}/{}]",
+				"warning:".yellow().bold(),
+				config.name.cyan().bold(),
+				"y".cyan().bold(),
+				"N".cyan().bold()
+			) => {
+				b'y' => fs::remove_file(&config.name)?,
+				_ => process::exit(0),
+			})
+		}
+		File::options()
+			.read(true)
+			.write(true)
+			.create_new(true)
+			.open(&config.name)?
+	};
 	BarsHandler::init(&compressor);
-	let mut output_file = File::options().read(true).write(true).create_new(true).open(&config.name)?;
 	#[cfg(target_os = "windows")]
 	{
 		use fs4::FileExt;

@@ -166,6 +166,7 @@ pub struct Config {
 	pub progress_bars: bool,
 	pub follow_symlinks: bool,
 	pub ignore_unreadable_files: Mutex<bool>,
+	pub force_overwrite: bool,
 	pub name: String,
 	pub level: u32,
 	pub threads: u32,
@@ -330,6 +331,7 @@ Create backup using default configuration? [{}/{}]",
 		ignore_unreadable_files: parse_config_field!(
 			config.backup.ignore_unreadable_files [default: Mutex::new(false)] -> Mutex<bool>
 		),
+		force_overwrite: parse_config_field!(config.backup.force_overwrite [default: false] -> bool),
 		name: Regex::new(r"%(![a-z]+)?([^% ]*)?")?.replace_all(
 			&parse_config_field!(config.backup.name -> String),
 			parse_name_capture
