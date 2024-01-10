@@ -8,7 +8,7 @@ use std::{
 	fmt::{Debug, Display},
 	fs, collections::HashMap, ffi::OsString,
 };
-use chrono::{Local, format::StrftimeItems, DateTime, Offset};
+use chrono::{Local, format::StrftimeItems, Offset};
 use clap::{
 	builder::{Styles, styling::{AnsiColor, Effects}},
 	crate_description,
