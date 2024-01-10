@@ -1,11 +1,11 @@
 [package]
-name = "xz-backup"
+name = "baxzup"
 version = "0.2.0"
 description = "Create backups using XZ compression"
 edition = "2021"
 rust-version = "1.74"
 authors = ["Felicia.iso"]
-repository = "https://github.com/Maiori44/xz-backup"
+repository = "https://github.com/Maiori44/Baxzup"
 license = "Zlib"
 keywords = ["xz", "tar", "backup", "compressor"]
 categories = ["command-line-utilities", "filesystem"]
