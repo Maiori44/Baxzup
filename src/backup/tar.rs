@@ -1,5 +1,5 @@
 use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}};
-use crate::{config::{TagKeepMode, config}, error::ResultExt};
+use crate::{config::{TagKeepMode, config}, error::ResultExt, input};
 use super::{bars::BarsHandler, OutputFileID, get_output_file_id};
 use colored::Colorize;
 use tar::Builder;
@@ -9,27 +9,21 @@ fn failed_access(path: &Path, e: &io::Error) -> bool {
 	if *ignore {
 		return true;
 	}
-	println!(
-		"{} could not access '{}' ({e}).\nHow to proceed? [{}etry/{}gnore/ignore {}ll]",
+	input!(format!(
+		"{} could not access '{}' ({e})\nHow to proceed? [{}etry/{}gnore/ignore {}ll]",
 		"warning:".yellow().bold(),
 		path.to_string_lossy().cyan().bold(),
 		"R".cyan().bold(),
 		"i".cyan().bold(),
 		"a".cyan().bold(),
-	);
-	let mut choice = String::new();
-	io::stdin().read_line(&mut choice).unwrap_or_exit();
-	match choice.trim_start().as_bytes().first() {
-		Some(byte) => match byte {
-			b'a' | b'A' => {
-				*ignore = true;
-				true
-			}
-			b'i' | b'I' => true,
-			_ => false
+	) => {
+		b'a' => {
+			*ignore = true;
+			true
 		},
-		None => false,
-	}
+		b'i' => true,
+		_ => false,
+	})
 }
 
 pub fn scan_path(

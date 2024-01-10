@@ -21,7 +21,7 @@ use dirs::config_dir;
 use regex::{bytes, Regex, Captures};
 use sysinfo::{System, User, RefreshKind, ProcessRefreshKind, Users};
 use toml::{value::Array, Table};
-use crate::error::{self, ResultExt};
+use crate::{error::{self, ResultExt}, input};
 
 mod default;
 
@@ -281,17 +281,15 @@ pub fn init() -> Result<(), Box<dyn Error>> {
 			fs::create_dir_all(parent)?;
 		}
 		fs::write(&cli.config_path, default::get())?;
-		println!(
+		input!(format!(
 "Default configuration saved in '{config_path_str}'
 Create backup using default configuration? [{}/{}]",
 			"y".cyan().bold(),
 			"N".cyan().bold()
-		);
-		let mut choice = String::new();
-		io::stdin().read_line(&mut choice)?;
-		if !choice.trim_start().as_bytes().first().is_some_and(|byte| byte.to_ascii_lowercase() == b'y') {
-			process::exit(0);
-		}
+		) => {
+			b'y' => {},
+			_ => process::exit(0),
+		});
 	}
 	if !cli.quiet {
 		print!("{} configuration... ('{config_path_str}')\r", "Loading".cyan().bold());
@@ -319,10 +317,6 @@ Create backup using default configuration? [{}/{}]",
 				}
 			))
 		},
-		/*exclude: parse_config_field!(config.backup.exclude -> map!(
-			"excluded patterns must be strings",
-			value.as_str() -> |s| Ok(bytes::Regex::new(s).unwrap_or_exit())
-		)),*/
 		exclude_tags: parse_config_field!(config.backup.exclude_tags -> map!(
 			"excluded tags must be arrays of arrays containing the path and the mode (both strings)",
 			value.as_array() -> parse_excluded_tag

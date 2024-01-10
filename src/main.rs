@@ -5,6 +5,23 @@ mod error;
 mod config;
 mod backup;
 
+macro_rules! input {
+	($question:expr => { $($char:literal => $code:expr,)+ _ => $default:expr, }) => {{
+		println!("{}", $question);
+		let mut choice = String::new();
+		io::stdin().read_line(&mut choice).unwrap_or_exit();
+		match choice.trim_start().as_bytes().first() {
+			Some(byte) => match byte.to_ascii_lowercase() {
+				$($char => $code,)+
+				_ => $default,
+			},
+			None => $default,
+		}
+	}};
+}
+
+pub(crate) use input;
+
 #[cfg(feature = "pause")]
 pub fn pause() {
 	let mut buf = String::new();
