@@ -37,6 +37,7 @@ pub fn get() -> String {
 		progress_bars = true
 		follow_symlinks = false
 		ignore_unreadable_files = false
+		force_overwrite = false
 		name = "%!hostname(%m-%y).tar.xz"
 
 		[xz]
