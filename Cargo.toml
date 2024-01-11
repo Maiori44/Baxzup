@@ -1,6 +1,6 @@
 [package]
 name = "baxzup"
-version = "0.2.0"
+version = "1.0.0-indev"
 description = "Create backups using XZ compression"
 edition = "2021"
 rust-version = "1.74"
