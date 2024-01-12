@@ -7,8 +7,9 @@ use colored::Colorize;
 
 #[derive(Debug)]
 pub struct BarsHandler {
-	pub xz_bar: ProgressBar,
 	pub tar_bar: ProgressBar,
+	pub xz_bar: ProgressBar,
+	pub status_bar: ProgressBar,
 	pub multi: MultiProgress,
 	ticker: JoinHandle<()>,
 	loader: JoinHandle<()>,
@@ -34,23 +35,42 @@ impl BarsHandler {
 			)
 			.unwrap()
 		);
+		let status_bar = ProgressBar::new(3).with_prefix("Last event".magenta().bold().to_string()).with_style(
+			ProgressStyle::with_template(
+				"{prefix}{bar:3.magenta.bold} [{elapsed_precise}] {wide_msg}"
+			)
+			.unwrap()
+			.progress_chars(". ")
+		);
 		multi.add(tar_bar.clone());
 		multi.add(xz_bar.clone());
+		multi.add(status_bar.clone());
+		status_bar.set_message("Starting...");
 		multi.set_move_cursor(true);
 		let compressor_ptr = compressor as usize;
 		let bars_handler = Self {
-			xz_bar: xz_bar.clone(),
 			tar_bar: tar_bar.clone(),
+			xz_bar: xz_bar.clone(),
+			status_bar: status_bar.clone(),
 			multi,
 			ticker: {
 				let xz_bar = xz_bar.clone();
+				let status_bar = status_bar.clone();
 				thread::spawn(move || {
 					let interval_duration = Duration::from_millis(166);
 					let mut counter = 0u8;
+					let mut prev_out = 0;
 					// SAFETY: this awful hack is "fine" because the compressor is dropped after the thread.
 					let compressor = unsafe { &*(compressor_ptr as *mut XzEncoder<R>) };
 					loop {
 						xz_bar.set_position(compressor.total_in());
+						if prev_out < compressor.total_out() {
+							prev_out = compressor.total_out();
+							status_bar.set_message(format!(
+								"Writing {} compressed bytes",
+								prev_out.to_string().cyan().bold()
+							));
+						}
 						counter = counter.wrapping_add(1);
 						if counter & 16 == 0 {
 							xz_bar.suspend(|| {
@@ -99,6 +119,8 @@ impl BarsHandler {
 					}
 				}
 				xz_bar.inc_length(xz_bar.length().unwrap() / 30);
+				status_bar.inc(1);
+				status_bar.set_message("Finished scanning");
 			}),
 		};
 		BARS_HANDLER.write().unwrap().set(bars_handler).unwrap();

@@ -66,6 +66,11 @@ pub fn init() -> io::Result<()> {
 	let tar_thread = tar::spawn_thread(writer);
 	io::copy(&mut compressor, &mut output_file)?;
 	BarsHandler::end(|bars_handler| {
+		bars_handler.status_bar.inc(1);
+		bars_handler.status_bar.finish_with_message(format!(
+			"Finished creating '{}'!",
+			config.name.cyan().bold()
+		));
 		bars_handler.xz_bar.finish_with_message("Compressed ".green().bold().to_string());
 		if !bars_handler.tar_bar.is_finished() {
 			bars_handler.tar_bar.abandon_with_message("Archived?".yellow().bold().to_string());

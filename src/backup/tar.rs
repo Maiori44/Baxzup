@@ -131,9 +131,15 @@ pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<()> {
 						}))
 					}
 				}, &mut |path, name| {
-					BarsHandler::exec(|bars_handler| {
-						bars_handler.tar_bar.inc(1);
-					});
+					unsafe {
+						BarsHandler::exec_unchecked(|bars_handler| {
+							bars_handler.tar_bar.inc(1);
+							bars_handler.status_bar.set_message(format!(
+								"Archiving '{}'",
+								path.display().to_string().cyan().bold()
+							));
+						});
+					}
 					builder.append_path_with_name(path, name)
 				})
 			} else {
@@ -143,6 +149,8 @@ pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<()> {
 			}.unwrap_or_exit();
 		}
 		BarsHandler::exec(|bars_handler| {
+			bars_handler.status_bar.inc(1);
+			bars_handler.status_bar.set_message("Finished archiving");
 			bars_handler.tar_bar.finish_with_message("Archived ".green().bold().to_string());
 		});
 		builder.finish().unwrap_or_exit();
