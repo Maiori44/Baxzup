@@ -1,12 +1,14 @@
 use std::{
 	path::PathBuf,
 	process,
-	io::{self, Write},
 	sync::{OnceLock, Mutex},
 	error::Error,
 	str::FromStr,
 	fmt::{Debug, Display},
-	fs, collections::HashMap, ffi::OsString,
+	collections::HashMap,
+	ffi::OsString,
+	fs,
+	io,
 };
 use chrono::{Local, format::StrftimeItems, Offset};
 use clap::{
@@ -291,8 +293,7 @@ Create backup using default configuration? [{}/{}]",
 		});
 	}
 	if !cli.quiet {
-		print!("{} configuration... ('{config_path_str}')\r", "Loading".cyan().bold());
-		io::stdout().flush()?;
+		println!("{} configuration... ('{config_path_str}')", "Loading".cyan().bold());
 	}
 	let config: Table = toml::from_str(&fs::read_to_string(cli.config_path)?)?;
 	CONFIG.set(Config {
@@ -339,10 +340,15 @@ Create backup using default configuration? [{}/{}]",
 		block_size: parse_config_field!(config.xz.block_size [default: 0] -> u64),
 	}).unwrap();
 	if !cli.quiet {
-		if *config!(progress_bars) {
-			print!("\x1b[2J\x1b[H");
-		}
-		println!("{} loading configuration! ('{config_path_str}')", "Finished".green().bold());
+		println!(
+			"{}{} configuration! ('{config_path_str}')",
+			if *config!(progress_bars) {
+				"\x1b[2J\x1b[H"
+			} else {
+				"\x1b[A\x1b[K"
+			},
+			"Loaded".green().bold()
+		);
 	}
 	Ok(()) //TODO: finish cli
 }
