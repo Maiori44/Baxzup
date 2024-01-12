@@ -22,18 +22,25 @@ impl BarsHandler {
 		if !*config!(progress_bars) {
 			return;
 		}
+		let spinner = if false {
+			"|/-\\ "
+		} else {
+			"⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ "
+		};
 		let multi = MultiProgress::new();
 		let tar_bar = ProgressBar::new(0).with_message("Archiving".cyan().bold().to_string()).with_style(
 			ProgressStyle::with_template(
 				"{msg}   {spinner} [{elapsed_precise}] {wide_bar:.yellow} {percent:>3}%"
 			)
 			.unwrap()
+			.tick_chars(spinner)
 		);
 		let xz_bar = ProgressBar::new(0).with_message("Compressing".cyan().bold().to_string()).with_style(
 			ProgressStyle::with_template(
 				"{msg} {spinner} [{elapsed_precise}] {wide_bar:.magenta} {percent:>3}%"
 			)
 			.unwrap()
+			.tick_chars(spinner)
 		);
 		let status_bar = ProgressBar::new(3).with_prefix("Last event".magenta().bold().to_string()).with_style(
 			ProgressStyle::with_template(
