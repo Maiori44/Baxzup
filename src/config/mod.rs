@@ -164,11 +164,11 @@ pub struct Config {
 	pub paths: Vec<PathBuf>,
 	pub exclude: Vec<bytes::Regex>,
 	pub exclude_tags: HashMap<OsString, TagKeepMode>,
-	pub progress_bars: bool,
 	pub follow_symlinks: bool,
 	pub ignore_unreadable_files: Mutex<bool>,
 	pub force_overwrite: bool,
 	pub name: String,
+	pub progress_bars: bool,
 	pub level: u32,
 	pub threads: u32,
 	pub block_size: u64,
@@ -321,11 +321,6 @@ Create backup using default configuration? [{}/{}]",
 			"excluded tags must be arrays of arrays containing the path and the mode (both strings)",
 			value.as_array() -> parse_excluded_tag
 		)),
-		progress_bars: if cli.quiet {
-			false
-		} else {
-			parse_config_field!(config.backup.progress_bars [default: true] -> bool)
-		},
 		follow_symlinks: parse_config_field!(config.backup.follow_symlinks [default: false] -> bool),
 		ignore_unreadable_files: parse_config_field!(
 			config.backup.ignore_unreadable_files [default: Mutex::new(false)] -> Mutex<bool>
@@ -335,6 +330,24 @@ Create backup using default configuration? [{}/{}]",
 			&parse_config_field!(config.backup.name -> String),
 			parse_name_capture
 		).into_owned(),
+		progress_bars: if cli.quiet {
+			false
+		} else {
+			if parse_config_field!(config.backup.progress_bars?).is_some_and(|value| value.is_bool()) {
+				input!(format!(
+					"{} deprecated field '{}' found\nUpdate configuration? [{}/{}]",
+					"notice:".cyan().bold(),
+					"backup.progress_bars".yellow().bold(),
+					"Y".cyan().bold(),
+					"n".cyan().bold(),
+				) => {
+					b'n' => parse_config_field!(config.backup.progress_bars -> bool),
+					_ => unimplemented!(),
+				})
+			} else {
+				parse_config_field!(config.progress_bars.enable [default: true] -> bool)
+			}
+		},
 		level: parse_config_field!(config.xz.level -> u32),
 		threads: parse_config_field!(config.xz.threads -> u32),
 		block_size: parse_config_field!(config.xz.block_size [default: 0] -> u64),
