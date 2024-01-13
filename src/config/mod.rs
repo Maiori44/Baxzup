@@ -281,7 +281,7 @@ pub fn init() -> Result<(), Box<dyn Error>> {
 		if let Some(parent) = cli.config_path.parent() {
 			fs::create_dir_all(parent)?;
 		}
-		fs::write(&cli.config_path, default::get())?;
+		fs::write(&cli.config_path, default::get().to_string())?;
 		input!(format!(
 "Default configuration saved in '{config_path_str}'
 Create backup using default configuration? [{}/{}]",
@@ -295,7 +295,24 @@ Create backup using default configuration? [{}/{}]",
 	if !cli.quiet {
 		println!("{} configuration... ('{config_path_str}')", "Loading".cyan().bold());
 	}
-	let config: Table = toml::from_str(&fs::read_to_string(cli.config_path)?)?;
+	let mut config: Table = toml::from_str(&fs::read_to_string(&cli.config_path)?)?;
+	if parse_config_field!(config.backup.progress_bars?).is_some_and(|value| value.is_bool()) {
+		input!(format!(
+			"{} deprecated field '{}' found\nUpdate configuration? [{}/{}]",
+			"notice:".cyan().bold(),
+			"backup.progress_bars".yellow().bold(),
+			"Y".cyan().bold(),
+			"n".cyan().bold(),
+		) => {
+			b'n' => {},
+			_ => {
+				let value = config["backup"].as_table_mut().unwrap().remove("progress_bars").unwrap();
+				default::update(&mut config);
+				config["progress_bars"]["enable"] = value;
+				fs::write(&cli.config_path, config.to_string())?;
+			},
+		})
+	}
 	CONFIG.set(Config {
 		paths: parse_config_field!(config.backup.paths -> map!(
 			"paths must be strings",
@@ -333,20 +350,7 @@ Create backup using default configuration? [{}/{}]",
 		progress_bars: if cli.quiet {
 			false
 		} else {
-			if parse_config_field!(config.backup.progress_bars?).is_some_and(|value| value.is_bool()) {
-				input!(format!(
-					"{} deprecated field '{}' found\nUpdate configuration? [{}/{}]",
-					"notice:".cyan().bold(),
-					"backup.progress_bars".yellow().bold(),
-					"Y".cyan().bold(),
-					"n".cyan().bold(),
-				) => {
-					b'n' => parse_config_field!(config.backup.progress_bars -> bool),
-					_ => unimplemented!(),
-				})
-			} else {
-				parse_config_field!(config.progress_bars.enable [default: true] -> bool)
-			}
+			parse_config_field!(config.progress_bars.enable [default: true] -> bool)
 		},
 		level: parse_config_field!(config.xz.level -> u32),
 		threads: parse_config_field!(config.xz.threads -> u32),

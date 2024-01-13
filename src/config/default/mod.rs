@@ -1,5 +1,5 @@
 use sysinfo::{System, RefreshKind, CpuRefreshKind};
-use toml::{toml, Value};
+use toml::{toml, Value, Table};
 
 #[cfg(target_os = "windows")]
 mod windows;
@@ -22,7 +22,12 @@ mod linux;
 )))]
 use linux as specifics;
 
-pub fn get() -> String {
+fn test_utf8_char(test: char) -> bool {
+	debug_assert!(test.len_utf8() > 1);
+	true
+}
+
+pub fn get() -> Table {
 	let system = System::new_with_specifics(
 		RefreshKind::new()
 			//.with_memory(MemoryRefreshKind::new().with_ram())
@@ -34,11 +39,15 @@ pub fn get() -> String {
 		paths = []
 		exclude = ["?/cache/i"]
 		exclude_tags = [["CACHEDIR.TAG", "keep-tag"]]
-		progress_bars = true
 		follow_symlinks = false
 		ignore_unreadable_files = false
 		force_overwrite = false
 		name = "%!hostname(%m-%y).tar.xz"
+
+		[progress_bars]
+		enable = true
+		ascii_spinner = false
+		ascii_bar = false
 
 		[xz]
 		level = 8
@@ -62,5 +71,22 @@ pub fn get() -> String {
 			}
 		}
 	}
-	config.to_string()
+	config
+}
+
+pub fn update(config: &mut Table) {
+	let mut default = get();
+	for table_key in config.keys() {
+		let (Some(default_table), Some(table)) = (
+			default.get_mut(table_key).map(|v| v.as_table_mut().unwrap()),
+			config[table_key].as_table()
+		) else {
+			default.insert(table_key.into(), config[table_key].clone());
+			continue;
+		};
+		for (key, value) in table {
+			default_table.insert(key.into(), value.clone());
+		}
+	}
+	*config = default;
 }
