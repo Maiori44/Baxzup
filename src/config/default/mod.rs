@@ -1,3 +1,4 @@
+use std::{fs::File, os::fd::{FromRawFd, AsRawFd}, io::{self, Read, Write}, thread};
 use sysinfo::{System, RefreshKind, CpuRefreshKind};
 use toml::{toml, Value, Table};
 
@@ -22,9 +23,24 @@ mod linux;
 )))]
 use linux as specifics;
 
-fn test_utf8_char(test: char) -> bool {
-	debug_assert!(test.len_utf8() > 1);
-	true
+fn test_utf8_chars(test: &str) -> io::Result<bool> {
+	println!("\x1b[6n");
+	let mut prefix = [0; 2];
+	let mut stdin = unsafe{File::from_raw_fd(io::stdin().as_raw_fd())};
+	thread::spawn(|| {
+		let mut stdin = unsafe{File::from_raw_fd(io::stdin().as_raw_fd())};
+		loop {
+			println!("{:?}", stdin.flush());
+			thread::sleep(std::time::Duration::from_millis(1000));
+		}
+	});
+	stdin.read(&mut prefix)?;
+	println!("'{:?}'", prefix);
+	for ch in test.chars() {
+		debug_assert!(ch.len_utf8() > 1);
+		
+	}
+	Ok(true)
 }
 
 pub fn get() -> Table {
@@ -34,6 +50,8 @@ pub fn get() -> Table {
 			.with_cpu(CpuRefreshKind::new())
 	);
 	let threads = system.cpus().len();
+	let ascii_spinner = test_utf8_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏").unwrap_or(true);
+	let ascii_bar = test_utf8_chars("█░").unwrap_or(true);
 	let mut config = toml! {
 		[backup]
 		paths = []

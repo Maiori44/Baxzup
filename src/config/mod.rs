@@ -309,7 +309,8 @@ Create backup using default configuration? [{}/{}]",
 				let value = config["backup"].as_table_mut().unwrap().remove("progress_bars").unwrap();
 				default::update(&mut config);
 				config["progress_bars"]["enable"] = value;
-				fs::write(&cli.config_path, config.to_string())?;
+				//fs::write(&cli.config_path, config.to_string())?;
+				process::exit(0);
 			},
 		})
 	}
