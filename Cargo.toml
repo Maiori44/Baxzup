@@ -30,3 +30,6 @@ fs4 = "0.7.0"
 [features]
 default = []
 pause = []
+
+[profile.release]
+lto = true
