@@ -15,6 +15,10 @@ pub struct BarsHandler {
 	loader: JoinHandle<()>,
 }
 
+pub const UNICODE_SPINNER: &str = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ ";
+pub const ASCII_SPINNER: &str = "|/-\\ ";
+pub const PROGRESS_BAR: &str = "█░";
+
 static BARS_HANDLER: RwLock<OnceLock<BarsHandler>> = RwLock::new(OnceLock::new());
 
 impl BarsHandler {
@@ -22,25 +26,23 @@ impl BarsHandler {
 		if !*config!(progress_bars) {
 			return;
 		}
-		let spinner = if false {
-			"|/-\\ "
-		} else {
-			"⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ "
-		};
+		let (spinner_chars, progress_chars) = config!(spinner_chars, progress_chars);
 		let multi = MultiProgress::new();
 		let tar_bar = ProgressBar::new(0).with_message("Archiving".cyan().bold().to_string()).with_style(
 			ProgressStyle::with_template(
 				"{msg}   {spinner} [{elapsed_precise}] {wide_bar:.yellow} {percent:>3}%"
 			)
 			.unwrap()
-			.tick_chars(spinner)
+			.tick_chars(spinner_chars)
+			.progress_chars(progress_chars)
 		);
 		let xz_bar = ProgressBar::new(0).with_message("Compressing".cyan().bold().to_string()).with_style(
 			ProgressStyle::with_template(
 				"{msg} {spinner} [{elapsed_precise}] {wide_bar:.magenta} {percent:>3}%"
 			)
 			.unwrap()
-			.tick_chars(spinner)
+			.tick_chars(spinner_chars)
+			.progress_chars(progress_chars)
 		);
 		let status_bar = ProgressBar::new(3).with_prefix("Last event".magenta().bold().to_string()).with_style(
 			ProgressStyle::with_template(

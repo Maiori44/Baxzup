@@ -23,7 +23,7 @@ use dirs::config_dir;
 use regex::{bytes, Regex, Captures};
 use sysinfo::{System, User, RefreshKind, ProcessRefreshKind, Users};
 use toml::{value::Array, Table};
-use crate::{error::{self, ResultExt}, input};
+use crate::{error::{self, ResultExt}, input, backup::bars::{UNICODE_SPINNER, PROGRESS_BAR}};
 
 mod default;
 
@@ -169,6 +169,8 @@ pub struct Config {
 	pub force_overwrite: bool,
 	pub name: String,
 	pub progress_bars: bool,
+	pub spinner_chars: String,
+	pub progress_chars: String,
 	pub level: u32,
 	pub threads: u32,
 	pub block_size: u64,
@@ -309,8 +311,7 @@ Create backup using default configuration? [{}/{}]",
 				let value = config["backup"].as_table_mut().unwrap().remove("progress_bars").unwrap();
 				default::update(&mut config);
 				config["progress_bars"]["enable"] = value;
-				//fs::write(&cli.config_path, config.to_string())?;
-				process::exit(0);
+				fs::write(&cli.config_path, config.to_string())?;
 			},
 		})
 	}
@@ -353,6 +354,12 @@ Create backup using default configuration? [{}/{}]",
 		} else {
 			parse_config_field!(config.progress_bars.enable [default: true] -> bool)
 		},
+		spinner_chars: parse_config_field!(
+			config.progress_bars.spinner_chars [default: String::from(UNICODE_SPINNER)] -> String
+		),
+		progress_chars: parse_config_field!(
+			config.progress_bars.progress_chars [default: String::from(PROGRESS_BAR)] -> String
+		),
 		level: parse_config_field!(config.xz.level -> u32),
 		threads: parse_config_field!(config.xz.threads -> u32),
 		block_size: parse_config_field!(config.xz.block_size [default: 0] -> u64),
