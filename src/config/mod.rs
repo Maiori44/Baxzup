@@ -22,7 +22,7 @@ use colored::Colorize;
 use dirs::config_dir;
 use regex::{bytes, Regex, Captures};
 use sysinfo::{System, User, RefreshKind, ProcessRefreshKind, Users};
-use toml::{value::Array, Table};
+use toml::{value::Array, Table, Value};
 use crate::{error::{self, ResultExt}, input, backup::bars::{UNICODE_SPINNER, PROGRESS_BAR}};
 
 mod default;
@@ -51,11 +51,11 @@ macro_rules! parse_config_field {
 		}
 	};
 	($name:ident.$i1:ident.$i2:ident $([default: $default:expr])?
-	-> map!($err:literal, value.$as:ident() -> $f:expr)) => {
+	-> map!($err:literal, value$(.$as:ident())? -> $f:expr)) => {
 		parse_config_field!($name.$i1.$i2 $([default: $default])? -> Array)
 			.iter()
 			.map(|value| {
-				map!(value, $err, value.$as() -> $f)
+				map!(value, $err, value$(.$as())? -> $f)
 			})
 			.collect()
 	};
@@ -67,6 +67,9 @@ macro_rules! map {
 			.$as()
 			.map_or_else(|| Err($err), $f)
 			.unwrap_or_exit()
+	};
+	($name:expr, $err:literal, value -> $f:expr) => {
+		$f($name).unwrap_or_exit()
 	};
 }
 
@@ -178,18 +181,23 @@ pub struct Config {
 
 pub static CONFIG: OnceLock<Config> = OnceLock::new();
 
-fn parse_excluded_tag(value: &Array) -> Result<(OsString, TagKeepMode), &'static str> {
-	if value.len() != 2 {
-		return Err("an excluded tag should only be the name and mode");
-	}
+fn parse_excluded_tag(value: &Value) -> Result<(OsString, TagKeepMode), &'static str> {
+	let (tag, mode) = if let Some(array) = value.as_array() {
+		if array.len() != 2 {
+			return Err("an excluded tag should only be the name and mode");
+		}
+		(&array[0], &array[1])
+	} else {
+		unimplemented!()
+	};
 	Ok((
 		map!(
-			value[0],
+			tag,
 			"excluded tag names must be strings",
 			value.as_str() -> |s| Ok(OsString::from(s))
 		),
 		map!(
-			value[1],
+			mode,
 			"excluded tag modes must be strings",
 			value.as_str() -> |s| Ok(match s.to_ascii_lowercase().as_str() {
 				"keep-tag" | "keep tag" | "keep_tag" | "keeptag" => TagKeepMode::Tag,
@@ -338,7 +346,7 @@ Create backup using default configuration? [{}/{}]",
 		},
 		exclude_tags: parse_config_field!(config.backup.exclude_tags -> map!(
 			"excluded tags must be arrays of arrays containing the path and the mode (both strings)",
-			value.as_array() -> parse_excluded_tag
+			value -> parse_excluded_tag
 		)),
 		follow_symlinks: parse_config_field!(config.backup.follow_symlinks [default: false] -> bool),
 		ignore_unreadable_files: parse_config_field!(
