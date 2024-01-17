@@ -323,6 +323,30 @@ Create backup using default configuration? [{}/{}]",
 			}
 		)?;
 	}
+	if parse_config_field!(config.backup.exclude_tags?).is_some_and(|value| value.is_array()) {
+		default::update(
+			format!(
+				"{} outdated type ('{}') found for field '{}' (replaced by '{}')",
+				"warning:".yellow().bold(),
+				"[[String, String], ...]".yellow().bold(),
+				"backup.exclude_tags".cyan().bold(),
+				"Table<String>".cyan().bold(),
+			),
+			&mut config,
+			|update, config| {
+				let tags = config["backup"]
+					.as_table_mut()
+					.unwrap()
+					.remove("exclude_tags")
+					.unwrap()
+					.as_array()
+					.unwrap();
+				update(config);
+				//config["progress_bars"]["enable"] = value;
+				fs::write(&cli.config_path, config.to_string())
+			}
+		)?;
+	}
 	CONFIG.set(Config {
 		paths: parse_config_field!(config.backup.paths -> map!(
 			"paths must be strings",

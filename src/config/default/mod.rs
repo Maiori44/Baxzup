@@ -38,7 +38,7 @@ pub fn get() -> Table {
 		[backup]
 		paths = []
 		exclude = ["?/cache/i"]
-		exclude_tags = [["CACHEDIR.TAG", "keep-tag"]]
+		exclude_tags = {"CACHEDIR.TAG" = "keep-tag"}
 		follow_symlinks = false
 		ignore_unreadable_files = false
 		force_overwrite = false
