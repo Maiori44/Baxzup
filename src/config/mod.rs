@@ -306,22 +306,22 @@ Create backup using default configuration? [{}/{}]",
 		println!("{} configuration... ('{config_path_str}')", "Loading".cyan().bold());
 	}
 	let mut config: Table = toml::from_str(&fs::read_to_string(&cli.config_path)?)?;
-	if parse_config_field!(config.backup.progress_bars?).is_some_and(|value| value.is_bool()) {
-		input!(format!(
-			"{} deprecated field '{}' found\nUpdate configuration? [{}/{}]",
-			"notice:".cyan().bold(),
-			"backup.progress_bars".yellow().bold(),
-			"Y".cyan().bold(),
-			"n".cyan().bold(),
-		) => {
-			b'n' => {},
-			_ => {
+	if parse_config_field!(config.backup.progress_bars?).is_some() {
+		default::update(
+			format!(
+				"{} outdated field '{}' found (replaced by '{}')",
+				"warning:".yellow().bold(),
+				"backup.progress_bars".yellow().bold(),
+				"progress_bars.enable".cyan().bold(),
+			),
+			&mut config,
+			|update, config| {
 				let value = config["backup"].as_table_mut().unwrap().remove("progress_bars").unwrap();
-				default::update(&mut config);
+				update(config);
 				config["progress_bars"]["enable"] = value;
-				fs::write(&cli.config_path, config.to_string())?;
-			},
-		})
+				fs::write(&cli.config_path, config.to_string())
+			}
+		)?;
 	}
 	CONFIG.set(Config {
 		paths: parse_config_field!(config.backup.paths -> map!(

@@ -1,7 +1,9 @@
-use crate::backup::bars::{UNICODE_SPINNER, ASCII_SPINNER, PROGRESS_BAR};
+use crate::{backup::bars::{UNICODE_SPINNER, ASCII_SPINNER, PROGRESS_BAR}, input, error::ResultExt};
 use sysinfo::{System, RefreshKind, CpuRefreshKind};
 use toml::{toml, Value, Table};
 use supports_unicode::Stream;
+use colored::Colorize;
+use std::io;
 
 #[cfg(target_os = "windows")]
 mod windows;
@@ -72,7 +74,7 @@ pub fn get() -> Table {
 	config
 }
 
-pub fn update(config: &mut Table) {
+fn update_internal(config: &mut Table) {
 	let mut default = get();
 	for table_key in config.keys() {
 		let (Some(default_table), Some(table)) = (
@@ -87,4 +89,23 @@ pub fn update(config: &mut Table) {
 		}
 	}
 	*config = default;
+}
+
+pub fn update(
+	msg: String,
+	config: &mut Table,
+	f: impl FnOnce(fn(&mut Table), &mut Table) -> io::Result<()>,
+) -> io::Result<()> {
+	if config.get("auto_update_config").is_some_and(|value| value.as_bool().unwrap_or_default()) {
+		f(update_internal, config)
+	} else {
+		Ok(input!(format!(
+			"{msg}\nUpdate configuration? [{}/{}]",
+			"Y".cyan().bold(),
+			"n".cyan().bold(),
+		) => {
+			b'n' => {},
+			_ => f(update_internal, config)?,
+		}))
+	}
 }
