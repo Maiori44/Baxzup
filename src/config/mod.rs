@@ -41,7 +41,16 @@ macro_rules! parse_config_field {
 				format!("{}.{}", stringify!($i1), stringify!($i2)).cyan().bold()
 			))?
 	}};
-	($name:ident.$i1:ident.$i2:ident -> $type:ident) => {
+	($name:ident.$i1:ident.$i2:ident $([default: $default:expr])?
+	-> map!($type:ty, $err:literal, value$(.$as:ident())? -> $f:expr)) => {
+		parse_config_field!($name.$i1.$i2 $([default: $default])? -> $type)
+			.iter()
+			.map(|value| {
+				map!(value, $err, value$(.$as())? -> $f)
+			})
+			.collect()
+	};
+	($name:ident.$i1:ident.$i2:ident -> $type:ty) => {
 		parse_config_field!($name.$i1.$i2).clone().try_into::<$type>()?
 	};
 	($name:ident.$i1:ident.$i2:ident [default: $default:expr] -> $type:ty) => {
@@ -49,15 +58,6 @@ macro_rules! parse_config_field {
 			Some(field) => field.clone().try_into::<$type>()?,
 			None => $default,
 		}
-	};
-	($name:ident.$i1:ident.$i2:ident $([default: $default:expr])?
-	-> map!($err:literal, value$(.$as:ident())? -> $f:expr)) => {
-		parse_config_field!($name.$i1.$i2 $([default: $default])? -> Array)
-			.iter()
-			.map(|value| {
-				map!(value, $err, value$(.$as())? -> $f)
-			})
-			.collect()
 	};
 }
 
@@ -109,8 +109,8 @@ pub(crate) use config;
 	long_about = None
 )]
 struct Cli {
-    /// Path to the configuration file
-    #[arg(
+	/// Path to the configuration file
+	#[arg(
 		short,
 		long,
 		default_value(match config_dir() {
@@ -127,7 +127,7 @@ struct Cli {
 			},
 		})
 	)]
-    config_path: PathBuf,
+	config_path: PathBuf,
 
 	/// Don't print non-important messages.
 	#[arg(short, long)]
@@ -180,34 +180,6 @@ pub struct Config {
 }
 
 pub static CONFIG: OnceLock<Config> = OnceLock::new();
-
-fn parse_excluded_tag(value: &Value) -> Result<(OsString, TagKeepMode), &'static str> {
-	let (tag, mode) = if let Some(array) = value.as_array() {
-		if array.len() != 2 {
-			return Err("an excluded tag should only be the name and mode");
-		}
-		(&array[0], &array[1])
-	} else {
-		unimplemented!()
-	};
-	Ok((
-		map!(
-			tag,
-			"excluded tag names must be strings",
-			value.as_str() -> |s| Ok(OsString::from(s))
-		),
-		map!(
-			mode,
-			"excluded tag modes must be strings",
-			value.as_str() -> |s| Ok(match s.to_ascii_lowercase().as_str() {
-				"keep-tag" | "keep tag" | "keep_tag" | "keeptag" => TagKeepMode::Tag,
-				"keep-dir" | "keep dir" | "keep_dir" | "keepdir" => TagKeepMode::Dir,
-				"keep-none" | "keep none" | "keep_none" | "keepnone" => TagKeepMode::None,
-				_ => return Err("unknown tag mode"),
-			})
-		),
-	))
-}
 
 fn get_user() -> Option<&'static User> {
 	static USERS: OnceLock<Users> = OnceLock::new();
@@ -306,6 +278,35 @@ Create backup using default configuration? [{}/{}]",
 		println!("{} configuration... ('{config_path_str}')", "Loading".cyan().bold());
 	}
 	let mut config: Table = toml::from_str(&fs::read_to_string(&cli.config_path)?)?;
+	if parse_config_field!(config.backup.exclude_tags?).is_some_and(|value| value.is_array()) {
+		default::update(
+			format!(
+				"{} outdated type ('{}') found for field '{}' (replaced by '{}')",
+				"warning:".yellow().bold(),
+				"[[String, String], ...]".yellow().bold(),
+				"backup.exclude_tags".cyan().bold(),
+				"Table<String>".cyan().bold(),
+			),
+			&mut config,
+			|update, config| {
+				let tags_value = config["backup"]
+					.as_table_mut()
+					.unwrap()
+					.remove("exclude_tags")
+					.unwrap();
+				let tags = tags_value.as_array().unwrap();
+				update(config);
+				let mut table = Table::with_capacity(tags.len());
+				for tag in tags {
+					if let Some([Value::String(name), mode]) = tag.as_array().map(Vec::as_slice) {
+						table.insert(name.to_owned(), mode.clone());
+					}
+				}
+				config["backup"]["exclude_tags"] = Value::Table(table);
+				fs::write(&cli.config_path, config.to_string())
+			}
+		)?;
+	}
 	if parse_config_field!(config.backup.progress_bars?).is_some() {
 		default::update(
 			format!(
@@ -323,32 +324,9 @@ Create backup using default configuration? [{}/{}]",
 			}
 		)?;
 	}
-	if parse_config_field!(config.backup.exclude_tags?).is_some_and(|value| value.is_array()) {
-		default::update(
-			format!(
-				"{} outdated type ('{}') found for field '{}' (replaced by '{}')",
-				"warning:".yellow().bold(),
-				"[[String, String], ...]".yellow().bold(),
-				"backup.exclude_tags".cyan().bold(),
-				"Table<String>".cyan().bold(),
-			),
-			&mut config,
-			|update, config| {
-				let tags = config["backup"]
-					.as_table_mut()
-					.unwrap()
-					.remove("exclude_tags")
-					.unwrap()
-					.as_array()
-					.unwrap();
-				update(config);
-				//config["progress_bars"]["enable"] = value;
-				fs::write(&cli.config_path, config.to_string())
-			}
-		)?;
-	}
 	CONFIG.set(Config {
 		paths: parse_config_field!(config.backup.paths -> map!(
+			Array,
 			"paths must be strings",
 			value.as_str() -> |s| Ok(PathBuf::from_str(s).unwrap_or_exit())
 		)),
@@ -356,6 +334,7 @@ Create backup using default configuration? [{}/{}]",
 			let regex_finder = Regex::new(r"^\?/(.*)/([imsUx]+)?$")?;
 			let escape_regex = Regex::new(r"[-\[\]{}()*+?.,\\^$|#]")?;
 			parse_config_field!(config.backup.exclude -> map!(
+				Array,
 				"excluded patterns must be strings",
 				value.as_str() -> |s| {
 					Ok(bytes::Regex::new(&match regex_finder.captures(s) {
@@ -369,8 +348,20 @@ Create backup using default configuration? [{}/{}]",
 			))
 		},
 		exclude_tags: parse_config_field!(config.backup.exclude_tags -> map!(
-			"excluded tags must be arrays of arrays containing the path and the mode (both strings)",
-			value -> parse_excluded_tag
+			Table,
+			"excluded tags must be stored in a table",
+			value -> |(name, mode): (&String, &Value)| -> Result<(OsString, TagKeepMode), String> {
+				Ok((OsString::from(name), map!(
+					mode,
+					"excluded tag modes must be strings",
+					value.as_str() -> |s| Ok(match s.to_ascii_lowercase().as_str() {
+						"keep-tag" | "keep tag" | "keep_tag" | "keeptag" => TagKeepMode::Tag,
+						"keep-dir" | "keep dir" | "keep_dir" | "keepdir" => TagKeepMode::Dir,
+						"keep-none" | "keep none" | "keep_none" | "keepnone" => TagKeepMode::None,
+						_ => return Err("unknown tag mode"),
+					})
+				)))
+			}
 		)),
 		follow_symlinks: parse_config_field!(config.backup.follow_symlinks [default: false] -> bool),
 		ignore_unreadable_files: parse_config_field!(
