@@ -181,6 +181,19 @@ pub struct Config {
 
 pub static CONFIG: OnceLock<Config> = OnceLock::new();
 
+fn parse_excluded_tag((name, mode): (&String, &Value)) -> Result<(OsString, TagKeepMode), String> {
+	Ok((OsString::from(name), map!(
+		mode,
+		"excluded tag modes must be strings",
+		value.as_str() -> |s| Ok(match s.to_ascii_lowercase().as_str() {
+			"keep-tag" | "keep tag" | "keep_tag" | "keeptag" => TagKeepMode::Tag,
+			"keep-dir" | "keep dir" | "keep_dir" | "keepdir" => TagKeepMode::Dir,
+			"keep-none" | "keep none" | "keep_none" | "keepnone" => TagKeepMode::None,
+			_ => return Err("unknown tag mode"),
+		})
+	)))
+}
+
 fn get_user() -> Option<&'static User> {
 	static USERS: OnceLock<Users> = OnceLock::new();
 	USERS.get_or_init(Users::new_with_refreshed_list).get_user_by_id(
@@ -350,18 +363,7 @@ Create backup using default configuration? [{}/{}]",
 		exclude_tags: parse_config_field!(config.backup.exclude_tags -> map!(
 			Table,
 			"excluded tags must be stored in a table",
-			value -> |(name, mode): (&String, &Value)| -> Result<(OsString, TagKeepMode), String> {
-				Ok((OsString::from(name), map!(
-					mode,
-					"excluded tag modes must be strings",
-					value.as_str() -> |s| Ok(match s.to_ascii_lowercase().as_str() {
-						"keep-tag" | "keep tag" | "keep_tag" | "keeptag" => TagKeepMode::Tag,
-						"keep-dir" | "keep dir" | "keep_dir" | "keepdir" => TagKeepMode::Dir,
-						"keep-none" | "keep none" | "keep_none" | "keepnone" => TagKeepMode::None,
-						_ => return Err("unknown tag mode"),
-					})
-				)))
-			}
+			value -> parse_excluded_tag
 		)),
 		follow_symlinks: parse_config_field!(config.backup.follow_symlinks [default: false] -> bool),
 		ignore_unreadable_files: parse_config_field!(

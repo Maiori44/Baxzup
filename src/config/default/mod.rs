@@ -99,13 +99,14 @@ pub fn update(
 	if config.get("auto_update_config").is_some_and(|value| value.as_bool().unwrap_or_default()) {
 		f(update_internal, config)
 	} else {
-		Ok(input!(format!(
+		input!(format!(
 			"{msg}\nUpdate configuration? [{}/{}]",
 			"Y".cyan().bold(),
 			"n".cyan().bold(),
 		) => {
 			b'n' => {},
 			_ => f(update_internal, config)?,
-		}))
+		});
+		Ok(())
 	}
 }
