@@ -355,7 +355,14 @@ Create backup using default configuration? [{}/{}]",
 							captures.get(2).map_or_else(String::new, |m| format!("(?{})", m.as_str())),
 							captures.get(1).unwrap().as_str().to_string()
 						].into_iter().collect::<String>(),
-						None => escape_regex.replace_all(s, "\\$0").to_string(),
+						None => escape_regex
+							.replace_all(s.strip_suffix(
+								#[cfg(target_os = "windows")]
+								'\\',
+								#[cfg(not(target_os = "windows"))]
+								'/'
+							).unwrap_or(s), "\\$0")
+							.to_string(),
 					}).unwrap_or_exit())
 				}
 			))
