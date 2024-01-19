@@ -57,7 +57,7 @@ pub fn scan_path(
 	} else {
 		path.symlink_metadata()
 	});
-	#[cfg(not(target_os = "windows"))]
+	#[cfg(unix)]
 	{
 		use std::os::unix::fs::MetadataExt;
 
@@ -100,7 +100,7 @@ pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<()> {
 		builder.follow_symlinks(config.follow_symlinks);
 		for path_ref in &config.paths {
 			let path = path_ref.canonicalize().unwrap_or_exit();
-			#[cfg(target_os = "windows")]
+			#[cfg(windows)]
 			let name = match path.file_name() {
 				Some(name) => Path::new(name).to_path_buf(),
 				None => {
@@ -117,7 +117,7 @@ pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<()> {
 					Path::new(&result).to_path_buf()
 				}
 			};
-			#[cfg(not(target_os = "windows"))]
+			#[cfg(unix)]
 			let name = Path::new(path.file_name().unwrap_or_else(|| std::ffi::OsStr::new("root"))).to_path_buf();
 			let output_file_id = get_output_file_id(config);
 			if config.progress_bars {

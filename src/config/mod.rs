@@ -219,9 +219,9 @@ fn parse_name_capture(caps: &Captures) -> String {
 				Some(user) => String::from(user.name()),
 				None => unknown(),
 			}),
-			#[cfg(target_os = "windows")]
+			#[cfg(windows)]
 			"!groupname" => Some(unknown()),
-			#[cfg(not(target_os = "windows"))]
+			#[cfg(unix)]
 			"!groupname" => Some(match get_user() {
 				Some(user) => {
 					let gid = user.group_id();
@@ -357,9 +357,9 @@ Create backup using default configuration? [{}/{}]",
 						].into_iter().collect::<String>(),
 						None => escape_regex
 							.replace_all(s.strip_suffix(
-								#[cfg(target_os = "windows")]
+								#[cfg(windows)]
 								'\\',
-								#[cfg(not(target_os = "windows"))]
+								#[cfg(unix)]
 								'/'
 							).unwrap_or(s), "\\$0")
 							.to_string(),

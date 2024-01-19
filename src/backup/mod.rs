@@ -7,16 +7,16 @@ use colored::Colorize;
 pub mod bars;
 mod tar;
 
-#[cfg(target_os = "windows")]
+#[cfg(windows)]
 pub type OutputFileID = ();
 
-#[cfg(target_os = "windows")]
+#[cfg(windows)]
 pub fn get_output_file_id(_: &Config) -> OutputFileID {}
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(unix)]
 pub type OutputFileID = (u64, u64);
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(unix)]
 pub fn get_output_file_id(config: &Config) -> OutputFileID {
     use std::os::unix::fs::MetadataExt;
 
@@ -58,7 +58,7 @@ pub fn init() -> io::Result<()> {
 			.open(&config.name)?
 	};
 	BarsHandler::init(&compressor);
-	#[cfg(target_os = "windows")]
+	#[cfg(windows)]
 	{
 		use fs4::FileExt;
 		output_file.try_lock_exclusive()?;

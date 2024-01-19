@@ -5,9 +5,9 @@ use supports_unicode::Stream;
 use colored::Colorize;
 use std::io;
 
-#[cfg(target_os = "windows")]
+#[cfg(windows)]
 mod windows;
-#[cfg(target_os = "windows")]
+#[cfg(windows)]
 use windows as specifics;
 
 #[cfg(target_os = "macos")]
