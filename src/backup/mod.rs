@@ -1,7 +1,7 @@
 use xz2::{read::XzEncoder, stream::MtStreamBuilder};
 use crate::{config::{config, Config}, error::ResultExt, input};
 use self::bars::BarsHandler;
-use std::{io, fs::{self, File}, path::Path, process};
+use std::{io::{self, Write}, fs::{self, File}, path::Path, process};
 use colored::Colorize;
 
 pub mod bars;
@@ -22,6 +22,22 @@ pub fn get_output_file_id(config: &Config) -> OutputFileID {
 
 	let meta = fs::metadata(&config.name).unwrap_or_exit();
 	(meta.dev(), meta.ino())
+}
+
+struct WriterObserver<W: Write> (W);
+
+impl<W: Write> Write for WriterObserver<W> {
+	fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+		println!(
+			"Writing {} compressed bytes",
+			buf.len().to_string().cyan().bold()
+		);
+		self.0.write(buf)
+	}
+
+	fn flush(&mut self) -> io::Result<()> {
+		self.0.flush()
+	}
 }
 
 pub fn init() -> io::Result<()> {
@@ -64,8 +80,12 @@ pub fn init() -> io::Result<()> {
 		output_file.try_lock_exclusive()?;
 	}
 	let tar_thread = tar::spawn_thread(writer);
-	io::copy(&mut compressor, &mut output_file)?;
-	BarsHandler::end(|bars_handler| {
+	if config.progress_bars {
+		io::copy(&mut compressor, &mut output_file)
+	} else {
+		io::copy(&mut compressor, &mut WriterObserver(output_file))
+	}?;
+	if !BarsHandler::end(|bars_handler| {
 		bars_handler.status_bar.inc(1);
 		bars_handler.status_bar.finish_with_message(format!(
 			"Finished creating '{}'!",
@@ -75,7 +95,12 @@ pub fn init() -> io::Result<()> {
 		if !bars_handler.tar_bar.is_finished() {
 			bars_handler.tar_bar.abandon_with_message("Archived?".yellow().bold().to_string());
 		}
-	});
+	}) {
+		println!(
+			"Finished creating '{}'!",
+			config.name.cyan().bold()
+		);
+	}
 	tar_thread.join().unwrap();
 	Ok(())
 }
