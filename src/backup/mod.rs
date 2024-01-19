@@ -85,7 +85,7 @@ pub fn init() -> io::Result<()> {
 	} else {
 		io::copy(&mut compressor, &mut WriterObserver(output_file))
 	}?;
-	if !BarsHandler::end(|bars_handler| {
+	BarsHandler::end(|bars_handler| {
 		bars_handler.status_bar.inc(1);
 		bars_handler.status_bar.finish_with_message(format!(
 			"Finished creating '{}'!",
@@ -95,7 +95,8 @@ pub fn init() -> io::Result<()> {
 		if !bars_handler.tar_bar.is_finished() {
 			bars_handler.tar_bar.abandon_with_message("Archived?".yellow().bold().to_string());
 		}
-	}) {
+	});
+	if !config.progress_bars {
 		println!(
 			"Finished creating '{}'!",
 			config.name.cyan().bold()

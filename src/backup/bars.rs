@@ -135,17 +135,14 @@ impl BarsHandler {
 		BARS_HANDLER.write().unwrap().set(bars_handler).unwrap();
 	}
 
-	pub unsafe fn exec_unchecked<T>(f: impl FnOnce(&BarsHandler) -> T) -> T {
+	/// SAFETY: the caller must make sure `BARS_HANDLER` containts a value by checking `Config.progress_bars`
+	pub unsafe fn exec<T>(f: impl FnOnce(&BarsHandler) -> T) -> T {
 		let bars_handler = BARS_HANDLER.read().unwrap();
 		debug_assert!(bars_handler.get().is_some());
 		f(bars_handler.get().unwrap_unchecked())
 	}
 
-	pub fn exec<T>(f: impl FnOnce(&BarsHandler) -> T) -> Option<T> {
-		BARS_HANDLER.read().unwrap().get().map(f)
-	}
-
-	pub fn end(f: impl FnOnce(&BarsHandler)) -> bool {
+	pub fn end(f: impl FnOnce(&BarsHandler)) {
 		if let Some(bars_handler) = BARS_HANDLER.write().unwrap().take() {
 			f(&bars_handler);
 			let thread_id = thread::current().id();
@@ -155,9 +152,6 @@ impl BarsHandler {
 			if bars_handler.loader.thread().id() != thread_id {
 				bars_handler.loader.join().unwrap();
 			}
-			true
-		} else {
-			false
 		}
 	}
 

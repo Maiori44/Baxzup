@@ -122,9 +122,8 @@ pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<()> {
 			let output_file_id = get_output_file_id(config);
 			if config.progress_bars {
 				scan_path(output_file_id, path, name, &|path, e| {
-					// SAFETY: BARS_HANDLER will always contain a value when Config.progress_bars is true
 					unsafe {
-						BarsHandler::exec_unchecked(|bars_handler| bars_handler.multi.suspend(|| {
+						BarsHandler::exec(|bars_handler| bars_handler.multi.suspend(|| {
 							let ignore = failed_access(path, e);
 							BarsHandler::redo_terminal();
 							ignore
@@ -132,7 +131,7 @@ pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<()> {
 					}
 				}, &mut |path, name| {
 					unsafe {
-						BarsHandler::exec_unchecked(|bars_handler| {
+						BarsHandler::exec(|bars_handler| {
 							bars_handler.tar_bar.inc(1);
 							bars_handler.status_bar.set_message(format!(
 								"Archiving '{}'",
@@ -152,11 +151,15 @@ pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<()> {
 				})
 			}.unwrap_or_exit();
 		}
-		if BarsHandler::exec(|bars_handler| {
-			bars_handler.status_bar.inc(1);
-			bars_handler.status_bar.set_message("Finished archiving");
-			bars_handler.tar_bar.finish_with_message("Archived ".green().bold().to_string());
-		}).is_none() {
+		if config.progress_bars {
+			unsafe {
+				BarsHandler::exec(|bars_handler| {
+					bars_handler.status_bar.inc(1);
+					bars_handler.status_bar.set_message("Finished archiving");
+					bars_handler.tar_bar.finish_with_message("Archived ".green().bold().to_string());
+				})
+			}
+		} else {
 			println!("Finished archiving...");
 		}
 		builder.finish().unwrap_or_exit();
