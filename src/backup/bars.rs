@@ -24,7 +24,7 @@ static BARS_HANDLER: RwLock<OnceLock<BarsHandler>> = RwLock::new(OnceLock::new()
 fn check_chars(name: &str, chars: &str) -> Result<(), String> {
 	if chars.chars().count() < 2 {
 		Err(format!(
-			"'{}' must contain at least 2 characters",
+			"`{}` must contain at least 2 characters",
 			name.cyan().bold()
 		))
 	} else {

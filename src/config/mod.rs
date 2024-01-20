@@ -31,13 +31,13 @@ macro_rules! parse_config_field {
 	($name:ident.$i1:ident.$i2:ident?) => {{
 		$name
 			.get(stringify!($i1))
-			.ok_or(format!("Missing table '{}' in configuration file!", stringify!($i1).cyan().bold()))?
+			.ok_or(format!("Missing table `{}` in configuration file!", stringify!($i1).cyan().bold()))?
 			.get(stringify!($i2))
 	}};
 	($name:ident.$i1:ident.$i2:ident) => {{
 		parse_config_field!($name.$i1.$i2?)
 			.ok_or(format!(
-				"Could not find field '{}' in configuration file!",
+				"Could not find field `{}` in configuration file!",
 				format!("{}.{}", stringify!($i1), stringify!($i2)).cyan().bold()
 			))?
 	}};
@@ -239,7 +239,7 @@ fn parse_name_capture(caps: &Captures) -> String {
 			}
 		} else {
 			let invalid = String::from("%") + group.as_str();
-			error::handler(format!("unknown specifier '{}'", invalid.yellow().bold()))
+			error::handler(format!("unknown specifier `{}`", invalid.yellow().bold()))
 		}
 	} else {
 		let captured = caps.get(0).unwrap().as_str();
@@ -255,7 +255,7 @@ fn parse_name_capture(caps: &Captures) -> String {
 					}
 				}
 				error::handler(format!(
-					"unknown specifier '{}'",
+					"unknown specifier `{}`",
 					captured.strip_suffix(&suffix).unwrap_or(captured).yellow().bold()
 				));
 			} else {
@@ -278,7 +278,7 @@ pub fn init() -> Result<(), Box<dyn Error>> {
 		}
 		fs::write(&cli.config_path, default::get().to_string())?;
 		input!(format!(
-"Default configuration saved in '{config_path_str}'
+"Default configuration saved in `{config_path_str}`
 Create backup using default configuration? [{}/{}]",
 			"y".cyan().bold(),
 			"N".cyan().bold()
@@ -288,13 +288,13 @@ Create backup using default configuration? [{}/{}]",
 		});
 	}
 	if !cli.quiet {
-		println!("{} configuration... ('{config_path_str}')", "Loading".cyan().bold());
+		println!("{} configuration... (`{config_path_str}`)", "Loading".cyan().bold());
 	}
 	let mut config: Table = toml::from_str(&fs::read_to_string(&cli.config_path)?)?;
 	if parse_config_field!(config.backup.exclude_tags?).is_some_and(|value| value.is_array()) {
 		default::update(
 			format!(
-				"{} outdated type ('{}') found for field '{}' (replaced by '{}')",
+				"{} outdated type (`{}`) found for field `{}` (replaced by `{}`)",
 				"warning:".yellow().bold(),
 				"[[String, String], ...]".yellow().bold(),
 				"backup.exclude_tags".cyan().bold(),
@@ -323,7 +323,7 @@ Create backup using default configuration? [{}/{}]",
 	if parse_config_field!(config.backup.progress_bars?).is_some() {
 		default::update(
 			format!(
-				"{} outdated field '{}' found (replaced by '{}')",
+				"{} outdated field `{}` found (replaced by `{}`)",
 				"warning:".yellow().bold(),
 				"backup.progress_bars".yellow().bold(),
 				"progress_bars.enable".cyan().bold(),
@@ -398,7 +398,7 @@ Create backup using default configuration? [{}/{}]",
 	}).unwrap();
 	if !cli.quiet {
 		println!(
-			"{}{} configuration! ('{config_path_str}')",
+			"{}{} configuration! (`{config_path_str}`)",
 			if *config!(progress_bars) {
 				"\x1b[2J\x1b[H"
 			} else {

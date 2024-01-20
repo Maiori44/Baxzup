@@ -57,7 +57,7 @@ pub fn init() -> io::Result<()> {
 	} else {
 		if AsRef::<Path>::as_ref(&config.name).exists() {
 			input!(format!(
-				"{} a file named '{}' already exists\nOverwrite? [{}/{}]",
+				"{} a file named `{}` already exists\nOverwrite? [{}/{}]",
 				"warning:".yellow().bold(),
 				config.name.cyan().bold(),
 				"y".cyan().bold(),
@@ -88,7 +88,7 @@ pub fn init() -> io::Result<()> {
 	BarsHandler::end(|bars_handler| {
 		bars_handler.status_bar.inc(1);
 		bars_handler.status_bar.finish_with_message(format!(
-			"Finished creating '{}'!",
+			"Finished creating `{}`!",
 			config.name.cyan().bold()
 		));
 		bars_handler.xz_bar.finish_with_message("Compressed ".green().bold().to_string());
@@ -98,7 +98,7 @@ pub fn init() -> io::Result<()> {
 	});
 	if !config.progress_bars {
 		println!(
-			"Finished creating '{}'!",
+			"Finished creating `{}`!",
 			config.name.cyan().bold()
 		);
 	}

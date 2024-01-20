@@ -10,7 +10,7 @@ fn failed_access(path: &Path, e: &io::Error) -> bool {
 		return true;
 	}
 	input!(format!(
-		"{} could not access '{}' ({e})\nHow to proceed? [{}etry/{}gnore/ignore {}ll]",
+		"{} could not access `{}` ({e})\nHow to proceed? [{}etry/{}gnore/ignore {}ll]",
 		"warning:".yellow().bold(),
 		path.to_string_lossy().cyan().bold(),
 		"R".cyan().bold(),
@@ -134,7 +134,7 @@ pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<()> {
 						BarsHandler::exec(|bars_handler| {
 							bars_handler.tar_bar.inc(1);
 							bars_handler.status_bar.set_message(format!(
-								"Archiving '{}'",
+								"Archiving `{}`",
 								path.display().to_string().cyan().bold()
 							));
 						});
@@ -144,7 +144,7 @@ pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<()> {
 			} else {
 				scan_path(output_file_id, path, name, &failed_access, &mut |path, name| {
 					println!(
-						"Archived '{}'",
+						"Archiving `{}`",
 						path.display().to_string().cyan().bold()
 					);
 					builder.append_path_with_name(path, name)
