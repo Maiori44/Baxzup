@@ -21,12 +21,25 @@ pub const PROGRESS_BAR: &str = "█░";
 
 static BARS_HANDLER: RwLock<OnceLock<BarsHandler>> = RwLock::new(OnceLock::new());
 
+fn check_chars(name: &str, chars: &str) -> Result<(), String> {
+	if chars.chars().count() < 2 {
+		Err(format!(
+			"'{}' must contain at least 2 characters",
+			name.cyan().bold()
+		))
+	} else {
+		Ok(())
+	}
+}
+
 impl BarsHandler {
-	pub fn init<R: Read>(compressor: *const XzEncoder<R>) {
+	pub fn init<R: Read>(compressor: *const XzEncoder<R>) -> Result<(), String> {
 		if !*config!(progress_bars) {
-			return;
+			return Ok(());
 		}
 		let (spinner_chars, progress_chars) = config!(spinner_chars, progress_chars);
+		check_chars("progress_bars.spinner_chars", spinner_chars)?;
+		check_chars("progress_bars.progress_chars", progress_chars)?;
 		let multi = MultiProgress::new();
 		let tar_bar = ProgressBar::new(0).with_message("Archiving".cyan().bold().to_string()).with_style(
 			ProgressStyle::with_template(
@@ -133,6 +146,7 @@ impl BarsHandler {
 			}),
 		};
 		BARS_HANDLER.write().unwrap().set(bars_handler).unwrap();
+		Ok(())
 	}
 
 	/// SAFETY: the caller must make sure `BARS_HANDLER` containts a value by checking `Config.progress_bars`
