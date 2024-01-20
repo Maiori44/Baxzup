@@ -8,7 +8,7 @@ use std::{
 	collections::HashMap,
 	ffi::OsString,
 	fs,
-	io,
+	io, hint::unreachable_unchecked,
 };
 use chrono::{Local, format::StrftimeItems, Offset};
 use clap::{
@@ -89,6 +89,7 @@ struct Cli {
 	#[arg(
 		short,
 		long,
+		value_name = "PATH",
 		default_value(match config_dir() {
 			Some(mut dir) => {
 				dir.push(crate_name!());
@@ -114,16 +115,64 @@ struct Cli {
 	paths: Option<Vec<PathBuf>>,
 
 	/// Add more paths to the list of paths to backup
-	#[arg(short = 'P', long, value_delimiter = ',')]
+	#[arg(short = 'P', long, value_delimiter = ',', value_name = "PATHS")]
 	add_paths: Vec<PathBuf>,
 
 	/// List of patterns to exclude [default: use configuration]
-	#[arg(short, long, value_delimiter = ',')]
+	#[arg(short, long, value_delimiter = ',', value_name = "PATTERNS")]
 	exclude: Option<Vec<String>>,
 
 	/// Add more patterns to the list of excluded patterns
-	#[arg(short = 'E', long, value_delimiter = ',')]
+	#[arg(short = 'E', long, value_delimiter = ',', value_name = "PATTERNS")]
 	add_exclude: Vec<String>,
+
+	/// Ignore the excluded tags defined in the configuration file
+	#[arg(long)]
+	allow_tags: bool,
+
+	/// Add an excluded tag with the keep-tag mode (keep folder with only the tag file inside)
+	#[arg(long, value_delimiter = ',', value_name = "TAGS")]
+	exclude_tags: Vec<OsString>,
+
+	/// Add an excluded tag with the keep-dir mode (keep folder without any file inside)
+	#[arg(long, value_delimiter = ',', value_name = "TAGS")]
+	exclude_tags_under: Vec<OsString>,
+
+	/// Add an excluded tag with the keep-none mode (don't keep anything)
+	#[arg(long, value_delimiter = ',', value_name = "TAGS")]
+	exclude_tags_all: Vec<OsString>,
+
+	/// Name (or path) of the backup file [default: use configuration]
+	#[arg(short, long)]
+	name: Option<String>,
+
+	/// Compression level for XZ (0-9) [default: use configuration]
+	#[arg(short, long)]
+	level: Option<u32>,
+
+	/// Amount of threads used by XZ [default: use configuration]
+	#[arg(short, long)]
+	threads: Option<u32>,
+
+	/// Size of each uncompressed block used by XZ in bytes [default: use configuration]
+	#[arg(short, long)]
+	block_size: Option<u64>,
+}
+
+trait ToOption<T> {
+	fn to_option(self) -> Option<T>;
+}
+
+impl ToOption<[(); 0]> for bool {
+	fn to_option(self) -> Option<[(); 0]> {
+		self.then_some([])
+	}
+}
+
+impl<T> ToOption<T> for Option<T> {
+	fn to_option(self) -> Option<T> {
+		self
+	}
 }
 
 struct Item<'a> (chrono::format::Item<'a>);
@@ -199,6 +248,24 @@ fn get_user() -> Option<&'static User> {
 
 fn unknown() -> String {
 	String::from("unknown")
+}
+
+fn parse_excluded_pattern(s: &str) -> Result<bytes::Regex, &str> {
+	Ok(bytes::Regex::new(&match Regex::new(r"^\?/(.*)/([imsUx]+)?$").unwrap().captures(s) {
+		Some(captures) => [
+			captures.get(2).map_or_else(String::new, |m| format!("(?{})", m.as_str())),
+			captures.get(1).unwrap().as_str().to_string()
+		].into_iter().collect::<String>(),
+		None => Regex::new(r"[-\[\]{}()*+?.,\\^$|#]")
+			.unwrap()
+			.replace_all(s.strip_suffix(
+				#[cfg(windows)]
+				'\\',
+				#[cfg(unix)]
+				'/'
+			).unwrap_or(s), "\\$0")
+			.to_string(),
+	}).unwrap_or_exit())
 }
 
 fn parse_name_capture(caps: &Captures) -> String {
@@ -311,16 +378,19 @@ Create backup using default configuration? [{}/{}]",
 				.collect()
 		};
 		(cli.$cli:ident || config.$i1:ident.$i2:ident $($rest:tt)*) => {
-			match cli.$cli {
+			match cli.$cli.to_option() {
 				Some(field) => field,
 				None => parse_config_field!(config.$i1.$i2 $($rest)*)
 			}
 		};
-		(cli.$cli:ident -> map!($f:expr) || config.$i1:ident.$i2:ident $($rest:tt)*) => {
-			match cli.$cli {
+		(cli.$cli:ident -> map!($type:ty, $f:expr) || config.$i1:ident.$i2:ident $($rest:tt)*) => {
+			match ToOption::<$type>::to_option(cli.$cli) {
 				Some(field) => field.iter().map(|value| map!(value, value -> $f)).collect(),
 				None => parse_config_field!(config.$i1.$i2 $($rest)*)
 			}
+		};
+		(cli.$cli:ident -> map!($f:expr) || config.$i1:ident.$i2:ident $($rest:tt)*) => {
+			parse_config_field!(cli.$cli -> map!([(); 0], $f) || config.$i1.$i2 $($rest)*)
 		};
 		(config.$i1:ident.$i2:ident -> $type:ty) => {
 			parse_config_field!(config.$i1.$i2)
@@ -340,25 +410,6 @@ Create backup using default configuration? [{}/{}]",
 				None => $default,
 			}
 		};
-	}
-
-	fn parse_excluded_pattern(s: &str) -> Result<bytes::Regex, &str> {
-		let regex_finder = Regex::new(r"^\?/(.*)/([imsUx]+)?$").unwrap();
-		let escape_regex = Regex::new(r"[-\[\]{}()*+?.,\\^$|#]").unwrap();
-		Ok(bytes::Regex::new(&match regex_finder.captures(s) {
-			Some(captures) => [
-				captures.get(2).map_or_else(String::new, |m| format!("(?{})", m.as_str())),
-				captures.get(1).unwrap().as_str().to_string()
-			].into_iter().collect::<String>(),
-			None => escape_regex
-				.replace_all(s.strip_suffix(
-					#[cfg(windows)]
-					'\\',
-					#[cfg(unix)]
-					'/'
-				).unwrap_or(s), "\\$0")
-				.to_string(),
-		}).unwrap_or_exit())
 	}
 
 	if parse_config_field!(config.backup.exclude_tags?).is_some_and(|value| value.is_array()) {
@@ -414,24 +465,32 @@ Create backup using default configuration? [{}/{}]",
 			value.as_str() -> |s| Ok(PathBuf::from_str(s).unwrap_or_exit())
 		)),
 		exclude: parse_config_field!(
-			cli.exclude -> map!(&parse_excluded_pattern)
+			cli.exclude -> map!(
+				Vec<String>,
+				parse_excluded_pattern
+			)
 			|| config.backup.exclude -> map!(
 				Array,
 				"excluded patterns must be strings",
-				value.as_str() -> &parse_excluded_pattern
+				value.as_str() -> parse_excluded_pattern
 			)
 		),
-		exclude_tags: parse_config_field!(config.backup.exclude_tags -> map!(
-			Table,
-			value -> parse_excluded_tag
-		)),
+		exclude_tags: parse_config_field!(
+			cli.allow_tags -> map!(|_: &_| -> Result<(OsString, TagKeepMode), &str> {
+				unsafe { unreachable_unchecked() }
+			})
+			|| config.backup.exclude_tags -> map!(
+				Table,
+				value -> parse_excluded_tag
+			)
+		),
 		follow_symlinks: parse_config_field!(config.backup.follow_symlinks [default: false] -> bool),
 		ignore_unreadable_files: parse_config_field!(
 			config.backup.ignore_unreadable_files [default: Mutex::new(false)] -> Mutex<bool>
 		),
 		force_overwrite: parse_config_field!(config.backup.force_overwrite [default: false] -> bool),
 		name: Regex::new(r"%(![a-z]+)?([^% ]*)?")?.replace_all(
-			&parse_config_field!(config.backup.name -> String),
+			&parse_config_field!(cli.name || config.backup.name -> String),
 			parse_name_capture
 		).into_owned(),
 		progress_bars: if cli.quiet {
@@ -445,18 +504,31 @@ Create backup using default configuration? [{}/{}]",
 		progress_chars: parse_config_field!(
 			config.progress_bars.progress_chars [default: String::from(PROGRESS_BAR)] -> String
 		),
-		level: parse_config_field!(config.xz.level -> u32),
-		threads: parse_config_field!(config.xz.threads -> u32),
-		block_size: parse_config_field!(config.xz.block_size [default: 0] -> u64),
+		level: parse_config_field!(cli.level || config.xz.level -> u32),
+		threads: parse_config_field!(cli.threads || config.xz.threads -> u32),
+		block_size: parse_config_field!(cli.block_size || config.xz.block_size [default: 0] -> u64),
 	};
 	config.paths.extend(cli.add_paths);
 	config.exclude.extend(
 		cli.add_exclude
 			.into_iter()
-			.map(|value| map!(value, value.as_str() -> &parse_excluded_pattern))
+			.map(|value| map!(value, value.as_str() -> parse_excluded_pattern))
 	);
-	println!("{:?}", config.exclude);
-	std::process::exit(0);
+	config.exclude_tags.extend(
+		cli.exclude_tags
+			.into_iter()
+			.map(|tag| (tag, TagKeepMode::Tag))
+			.chain(
+				cli.exclude_tags_under
+					.into_iter()
+					.map(|tag| (tag, TagKeepMode::Dir))
+			)
+			.chain(
+				cli.exclude_tags_all
+					.into_iter()
+					.map(|tag| (tag, TagKeepMode::None))
+			)
+	);
 	CONFIG.set(config).unwrap();
 	if !cli.quiet {
 		println!(
