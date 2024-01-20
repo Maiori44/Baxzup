@@ -27,46 +27,6 @@ use crate::{error::{self, ResultExt}, input, backup::bars::{UNICODE_SPINNER, PRO
 
 mod default;
 
-macro_rules! parse_config_field {
-	($name:ident.$i1:ident.$i2:ident?) => {{
-		$name
-			.get(stringify!($i1))
-			.ok_or_else(|| format!("Missing table `{}` in configuration file!", stringify!($i1).cyan().bold()))?
-			.get(stringify!($i2))
-	}};
-	($name:ident.$i1:ident.$i2:ident) => {{
-		parse_config_field!($name.$i1.$i2?)
-			.ok_or_else(|| format!(
-				"Could not find field `{}` in configuration file!",
-				format!("{}.{}", stringify!($i1), stringify!($i2)).cyan().bold()
-			))?
-	}};
-	($name:ident.$i1:ident.$i2:ident $([default: $default:expr])?
-	-> map!($type:ty, $err:literal, value$(.$as:ident())? -> $f:expr)) => {
-		parse_config_field!($name.$i1.$i2 $([default: $default])? -> $type)
-			.iter()
-			.map(|value| {
-				map!(value, $err, value$(.$as())? -> $f)
-			})
-			.collect()
-	};
-	($name:ident.$i1:ident.$i2:ident -> $type:ty) => {
-		parse_config_field!($name.$i1.$i2).clone().try_into::<$type>().map_err(|e| format!(
-			"failed to parse field `{}`\n{e}",
-			format!("{}.{}", stringify!($i1), stringify!($i2)).cyan().bold()
-		))?
-	};
-	($name:ident.$i1:ident.$i2:ident [default: $default:expr] -> $type:ty) => {
-		match parse_config_field!($name.$i1.$i2?) {
-			Some(field) => field.clone().try_into::<$type>().map_err(|e| format!(
-				"failed to parse field `{}`\n{e}",
-				format!("{}.{}", stringify!($i1), stringify!($i2)).cyan().bold()
-			))?,
-			None => $default,
-		}
-	};
-}
-
 macro_rules! map {
 	($name:expr, $err:literal, value.$as:ident() -> $f:expr) => {
 		$name
@@ -74,8 +34,8 @@ macro_rules! map {
 			.map_or_else(|| Err($err), $f)
 			.unwrap_or_exit()
 	};
-	($name:expr, $err:literal, value -> $f:expr) => {
-		$f($name).unwrap_or_exit()
+	($name:expr, value$(.$as:ident())? -> $f:expr) => {
+		$f($name$(.$as())?).unwrap_or_exit()
 	};
 }
 
@@ -145,9 +105,25 @@ struct Cli {
 	)]
 	config_path: PathBuf,
 
-	/// Don't print non-important messages.
+	/// Don't print non-important messages
 	#[arg(short, long)]
 	quiet: bool,
+
+	/// Paths to the directories/files to add to the backup [default: use configuration]
+	#[arg(short, long, value_delimiter = ',')]
+	paths: Option<Vec<PathBuf>>,
+
+	/// Add more paths to the list of paths to backup
+	#[arg(short = 'P', long, value_delimiter = ',')]
+	add_paths: Vec<PathBuf>,
+
+	/// List of patterns to exclude [default: use configuration]
+	#[arg(short, long, value_delimiter = ',')]
+	exclude: Option<Vec<String>>,
+
+	/// Add more patterns to the list of excluded patterns
+	#[arg(short = 'E', long, value_delimiter = ',')]
+	add_exclude: Vec<String>,
 }
 
 struct Item<'a> (chrono::format::Item<'a>);
@@ -307,6 +283,84 @@ Create backup using default configuration? [{}/{}]",
 		println!("{} configuration... (`{config_path_str}`)", "Loading".cyan().bold());
 	}
 	let mut config: Table = toml::from_str(&fs::read_to_string(&cli.config_path)?)?;
+	
+	macro_rules! parse_config_field {
+		(config.$i1:ident.$i2:ident?) => {{
+			config
+				.get(stringify!($i1))
+				.ok_or_else(|| format!(
+					"Missing table `{}` in configuration file!",
+					stringify!($i1).cyan().bold()
+				))?
+				.get(stringify!($i2))
+		}};
+		(config.$i1:ident.$i2:ident) => {{
+			parse_config_field!(config.$i1.$i2?)
+				.ok_or_else(|| format!(
+					"Could not find field `{}` in configuration file!",
+					format!("{}.{}", stringify!($i1), stringify!($i2)).cyan().bold()
+				))?
+		}};
+		(config.$i1:ident.$i2:ident $([default: $default:expr])?
+		-> map!($type:ty, $($err:literal,)? value$(.$as:ident())? -> $f:expr)) => {
+			parse_config_field!(config.$i1.$i2 $([default: $default])? -> $type)
+				.iter()
+				.map(|value| {
+					map!(value, $($err,)? value$(.$as())? -> $f)
+				})
+				.collect()
+		};
+		(cli.$cli:ident || config.$i1:ident.$i2:ident $($rest:tt)*) => {
+			match cli.$cli {
+				Some(field) => field,
+				None => parse_config_field!(config.$i1.$i2 $($rest)*)
+			}
+		};
+		(cli.$cli:ident -> map!($f:expr) || config.$i1:ident.$i2:ident $($rest:tt)*) => {
+			match cli.$cli {
+				Some(field) => field.iter().map(|value| map!(value, value -> $f)).collect(),
+				None => parse_config_field!(config.$i1.$i2 $($rest)*)
+			}
+		};
+		(config.$i1:ident.$i2:ident -> $type:ty) => {
+			parse_config_field!(config.$i1.$i2)
+				.clone()
+				.try_into::<$type>()
+				.map_err(|e| format!(
+					"failed to parse field `{}`\n{e}",
+					format!("{}.{}", stringify!($i1), stringify!($i2)).cyan().bold()
+				))?
+		};
+		(config.$i1:ident.$i2:ident [default: $default:expr] -> $type:ty) => {
+			match parse_config_field!(config.$i1.$i2?) {
+				Some(field) => field.clone().try_into::<$type>().map_err(|e| format!(
+					"failed to parse field `{}`\n{e}",
+					format!("{}.{}", stringify!($i1), stringify!($i2)).cyan().bold()
+				))?,
+				None => $default,
+			}
+		};
+	}
+
+	fn parse_excluded_pattern(s: &str) -> Result<bytes::Regex, &str> {
+		let regex_finder = Regex::new(r"^\?/(.*)/([imsUx]+)?$").unwrap();
+		let escape_regex = Regex::new(r"[-\[\]{}()*+?.,\\^$|#]").unwrap();
+		Ok(bytes::Regex::new(&match regex_finder.captures(s) {
+			Some(captures) => [
+				captures.get(2).map_or_else(String::new, |m| format!("(?{})", m.as_str())),
+				captures.get(1).unwrap().as_str().to_string()
+			].into_iter().collect::<String>(),
+			None => escape_regex
+				.replace_all(s.strip_suffix(
+					#[cfg(windows)]
+					'\\',
+					#[cfg(unix)]
+					'/'
+				).unwrap_or(s), "\\$0")
+				.to_string(),
+		}).unwrap_or_exit())
+	}
+
 	if parse_config_field!(config.backup.exclude_tags?).is_some_and(|value| value.is_array()) {
 		default::update(
 			format!(
@@ -353,39 +407,22 @@ Create backup using default configuration? [{}/{}]",
 			}
 		)?;
 	}
-	CONFIG.set(Config {
-		paths: parse_config_field!(config.backup.paths -> map!(
+	let mut config = Config {
+		paths: parse_config_field!(cli.paths || config.backup.paths -> map!(
 			Array,
 			"paths must be strings",
 			value.as_str() -> |s| Ok(PathBuf::from_str(s).unwrap_or_exit())
 		)),
-		exclude: {
-			let regex_finder = Regex::new(r"^\?/(.*)/([imsUx]+)?$")?;
-			let escape_regex = Regex::new(r"[-\[\]{}()*+?.,\\^$|#]")?;
-			parse_config_field!(config.backup.exclude -> map!(
+		exclude: parse_config_field!(
+			cli.exclude -> map!(&parse_excluded_pattern)
+			|| config.backup.exclude -> map!(
 				Array,
 				"excluded patterns must be strings",
-				value.as_str() -> |s| {
-					Ok(bytes::Regex::new(&match regex_finder.captures(s) {
-						Some(captures) => [
-							captures.get(2).map_or_else(String::new, |m| format!("(?{})", m.as_str())),
-							captures.get(1).unwrap().as_str().to_string()
-						].into_iter().collect::<String>(),
-						None => escape_regex
-							.replace_all(s.strip_suffix(
-								#[cfg(windows)]
-								'\\',
-								#[cfg(unix)]
-								'/'
-							).unwrap_or(s), "\\$0")
-							.to_string(),
-					}).unwrap_or_exit())
-				}
-			))
-		},
+				value.as_str() -> &parse_excluded_pattern
+			)
+		),
 		exclude_tags: parse_config_field!(config.backup.exclude_tags -> map!(
 			Table,
-			"excluded tags must be stored in a table",
 			value -> parse_excluded_tag
 		)),
 		follow_symlinks: parse_config_field!(config.backup.follow_symlinks [default: false] -> bool),
@@ -411,7 +448,16 @@ Create backup using default configuration? [{}/{}]",
 		level: parse_config_field!(config.xz.level -> u32),
 		threads: parse_config_field!(config.xz.threads -> u32),
 		block_size: parse_config_field!(config.xz.block_size [default: 0] -> u64),
-	}).unwrap();
+	};
+	config.paths.extend(cli.add_paths);
+	config.exclude.extend(
+		cli.add_exclude
+			.into_iter()
+			.map(|value| map!(value, value.as_str() -> &parse_excluded_pattern))
+	);
+	println!("{:?}", config.exclude);
+	std::process::exit(0);
+	CONFIG.set(config).unwrap();
 	if !cli.quiet {
 		println!(
 			"{}{} configuration! (`{config_path_str}`)",
