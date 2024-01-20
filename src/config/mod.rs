@@ -264,7 +264,7 @@ fn parse_excluded_pattern(s: &str) -> Result<bytes::Regex, &str> {
 				#[cfg(unix)]
 				'/'
 			).unwrap_or(s), "\\$0")
-			.to_string(),
+			.to_string() + "$",
 	}).unwrap_or_exit())
 }
 
