@@ -31,12 +31,12 @@ macro_rules! parse_config_field {
 	($name:ident.$i1:ident.$i2:ident?) => {{
 		$name
 			.get(stringify!($i1))
-			.ok_or(format!("Missing table `{}` in configuration file!", stringify!($i1).cyan().bold()))?
+			.ok_or_else(|| format!("Missing table `{}` in configuration file!", stringify!($i1).cyan().bold()))?
 			.get(stringify!($i2))
 	}};
 	($name:ident.$i1:ident.$i2:ident) => {{
 		parse_config_field!($name.$i1.$i2?)
-			.ok_or(format!(
+			.ok_or_else(|| format!(
 				"Could not find field `{}` in configuration file!",
 				format!("{}.{}", stringify!($i1), stringify!($i2)).cyan().bold()
 			))?
@@ -93,6 +93,16 @@ macro_rules! config {
 }
 
 pub(crate) use config;
+
+macro_rules! assert_config {
+	($test:expr, $($arg:tt)*) => {
+		if $test {
+			return Err(io::Error::other(format!($($arg)*)));
+		}
+	}
+}
+
+pub(crate) use assert_config;
 
 #[derive(Parser)]
 #[command(
