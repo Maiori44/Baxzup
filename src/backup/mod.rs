@@ -1,5 +1,5 @@
 use xz2::{read::XzEncoder, stream::MtStreamBuilder};
-use crate::{config::{config, Config}, error::ResultExt, input};
+use crate::{config::{config, assert_config, Config}, error::ResultExt, input};
 use self::bars::BarsHandler;
 use std::{io::{self, Write}, fs::{self, File}, path::Path, process};
 use colored::Colorize;
@@ -43,6 +43,16 @@ impl<W: Write> Write for WriterObserver<W> {
 pub fn init() -> io::Result<()> {
 	let config = config!();
 	let (reader, writer) = os_pipe::pipe()?;
+	assert_config!(
+		config.level > 9,
+		"`{}` cannot exceed 9",
+		"xz.level".cyan().bold()
+	);
+	assert_config!(
+		config.threads < 1,
+		"`{}` must be at least 1",
+		"xz.threads".cyan().bold()
+	);
 	let mut compressor = XzEncoder::new_stream(
 		reader,
 		MtStreamBuilder::new()

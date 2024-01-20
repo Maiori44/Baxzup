@@ -51,11 +51,17 @@ macro_rules! parse_config_field {
 			.collect()
 	};
 	($name:ident.$i1:ident.$i2:ident -> $type:ty) => {
-		parse_config_field!($name.$i1.$i2).clone().try_into::<$type>()?
+		parse_config_field!($name.$i1.$i2).clone().try_into::<$type>().map_err(|e| format!(
+			"failed to parse field `{}`\n{e}",
+			format!("{}.{}", stringify!($i1), stringify!($i2)).cyan().bold()
+		))?
 	};
 	($name:ident.$i1:ident.$i2:ident [default: $default:expr] -> $type:ty) => {
 		match parse_config_field!($name.$i1.$i2?) {
-			Some(field) => field.clone().try_into::<$type>()?,
+			Some(field) => field.clone().try_into::<$type>().map_err(|e| format!(
+				"failed to parse field `{}`\n{e}",
+				format!("{}.{}", stringify!($i1), stringify!($i2)).cyan().bold()
+			))?,
 			None => $default,
 		}
 	};
