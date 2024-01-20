@@ -475,6 +475,7 @@ Create backup using default configuration? [{}/{}]",
 				value.as_str() -> parse_excluded_pattern
 			)
 		),
+		#[allow(clippy::redundant_closure_call)]
 		exclude_tags: parse_config_field!(
 			cli.allow_tags -> map!(|_: &_| -> Result<(OsString, TagKeepMode), &str> {
 				unsafe { unreachable_unchecked() }
