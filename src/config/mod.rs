@@ -400,7 +400,7 @@ Create backup using default configuration? [{}/{}]",
 		progress_bars: if cli.quiet {
 			false
 		} else {
-			parse_config_field!(config.progress_bars.enable [default: true] -> bool)
+			parse_config_field!(config.progress_bars.enable -> bool)
 		},
 		spinner_chars: parse_config_field!(
 			config.progress_bars.spinner_chars [default: String::from(UNICODE_SPINNER)] -> String
