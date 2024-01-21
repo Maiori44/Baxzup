@@ -1,4 +1,5 @@
 use std::{
+	hint::unreachable_unchecked,
 	path::PathBuf,
 	process,
 	sync::{OnceLock, Mutex},
@@ -8,7 +9,7 @@ use std::{
 	collections::HashMap,
 	ffi::OsString,
 	fs,
-	io, hint::unreachable_unchecked,
+	io,
 };
 use chrono::{Local, format::StrftimeItems, Offset};
 use clap::{
@@ -106,6 +107,10 @@ struct Cli {
 	)]
 	config_path: PathBuf,
 
+	/// Use the default configuration rather than reading the configuration file
+	#[arg(short = 'd', long, conflicts_with = "config_path")]
+	default_config: bool,
+
 	/// Don't print non-important messages
 	#[arg(short, long)]
 	quiet: bool,
@@ -157,6 +162,10 @@ struct Cli {
 	/// Size of each uncompressed block used by XZ in bytes [default: use configuration]
 	#[arg(short, long)]
 	block_size: Option<u64>,
+
+	/// Update any outdated configuration automatically instead of asking
+	#[arg(short, long)]
+	auto_update_config: bool,
 }
 
 trait ToOption<T> {
@@ -327,8 +336,12 @@ fn parse_name_capture(caps: &Captures) -> String {
 
 pub fn init() -> Result<(), Box<dyn Error>> {
 	let cli = Cli::parse();
-	let config_path_str = cli.config_path.to_string_lossy().cyan().bold();
-	if !cli.config_path.exists() {
+	let config_path_str = if cli.default_config {
+		"--default-config".cyan().bold()
+	} else {
+		cli.config_path.to_string_lossy().cyan().bold()
+	};
+	if !(cli.config_path.exists() || cli.default_config) {
 		if !cli.quiet {
 			println!("{} configuration file not found, generating default...", "notice:".cyan().bold());
 		}
@@ -349,7 +362,11 @@ Create backup using default configuration? [{}/{}]",
 	if !cli.quiet {
 		println!("{} configuration... (`{config_path_str}`)", "Loading".cyan().bold());
 	}
-	let mut config: Table = toml::from_str(&fs::read_to_string(&cli.config_path)?)?;
+	let mut config = if cli.default_config {
+		default::get()
+	} else {
+		toml::from_str(&fs::read_to_string(&cli.config_path)?)?
+	};
 	
 	macro_rules! parse_config_field {
 		(config.$i1:ident.$i2:ident?) => {{
