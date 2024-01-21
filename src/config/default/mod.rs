@@ -42,7 +42,7 @@ pub fn get() -> Table {
 		follow_symlinks = false
 		ignore_unreadable_files = false
 		force_overwrite = false
-		name = "%!hostname(%m-%y).tar.xz"
+		name = "%!hostname (%F).tar.xz"
 
 		[progress_bars]
 		enable = true
