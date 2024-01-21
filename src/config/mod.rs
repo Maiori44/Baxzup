@@ -147,6 +147,11 @@ struct Cli {
 	#[arg(long, value_delimiter = ',', value_name = "TAGS")]
 	exclude_tags_all: Vec<OsString>,
 
+	/// Archive what symlinks link to rather than the symlink itself, may get stuck in a loop
+	/// [default: use configuration]
+	#[arg(short = 's', long, value_name = "FOLLOW")]
+	follow_symlinks: Option<bool>,
+
 	/// Name (or path) of the backup file [default: use configuration]
 	#[arg(short, long)]
 	name: Option<String>,
@@ -502,7 +507,9 @@ Create backup using default configuration? [{}/{}]",
 				value -> parse_excluded_tag
 			)
 		),
-		follow_symlinks: parse_config_field!(config.backup.follow_symlinks [default: false] -> bool),
+		follow_symlinks: parse_config_field!(
+			cli.follow_symlinks || config.backup.follow_symlinks [default: false] -> bool
+		),
 		ignore_unreadable_files: parse_config_field!(
 			config.backup.ignore_unreadable_files [default: Mutex::new(false)] -> Mutex<bool>
 		),
