@@ -149,8 +149,16 @@ struct Cli {
 
 	/// Archive what symlinks link to rather than the symlink itself, may get stuck in a loop
 	/// [default: use configuration]
-	#[arg(short = 's', long, value_name = "FOLLOW")]
+	#[arg(short = 's', long, value_name = "FOLLOW", default_missing_value = "true", num_args = 0..=1)]
 	follow_symlinks: Option<bool>,
+
+	/// Skip files that failed to be read rather than asking the user [default: use configuration]
+	#[arg(short, long, value_name = "IGNORE", default_missing_value = "true", num_args = 0..=1)]
+	ignore_unreadable_files: Option<bool>,
+
+	/// Replace any already existing file with the same name as the backup [default: use configuration]
+	#[arg(short, long, value_name = "FORCE", default_missing_value = "true", num_args = 0..=1)]
+	force_overwrite: Option<bool>,
 
 	/// Name (or path) of the backup file [default: use configuration]
 	#[arg(short, long)]
@@ -510,10 +518,14 @@ Create backup using default configuration? [{}/{}]",
 		follow_symlinks: parse_config_field!(
 			cli.follow_symlinks || config.backup.follow_symlinks [default: false] -> bool
 		),
-		ignore_unreadable_files: parse_config_field!(
-			config.backup.ignore_unreadable_files [default: Mutex::new(false)] -> Mutex<bool>
+		ignore_unreadable_files: Mutex::new(parse_config_field!(
+			cli.ignore_unreadable_files
+			|| config.backup.ignore_unreadable_files [default: false] -> bool
+		)),
+		force_overwrite: parse_config_field!(
+			cli.force_overwrite
+			|| config.backup.force_overwrite [default: false] -> bool
 		),
-		force_overwrite: parse_config_field!(config.backup.force_overwrite [default: false] -> bool),
 		name: Regex::new(r"%(![a-z]+)?([^% ]*)?")?.replace_all(
 			&parse_config_field!(cli.name || config.backup.name -> String),
 			parse_name_capture
