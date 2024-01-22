@@ -444,6 +444,7 @@ Create backup using default configuration? [{}/{}]",
 
 	if parse_config_field!(config.backup.exclude_tags?).is_some_and(|value| value.is_array()) {
 		default::update(
+			cli.auto_update_config,
 			format!(
 				"{} outdated type (`{}`) found for field `{}` (replaced by `{}`)",
 				"warning:".yellow().bold(),
@@ -473,6 +474,7 @@ Create backup using default configuration? [{}/{}]",
 	}
 	if parse_config_field!(config.backup.progress_bars?).is_some() {
 		default::update(
+			cli.auto_update_config,
 			format!(
 				"{} outdated field `{}` found (replaced by `{}`)",
 				"warning:".yellow().bold(),

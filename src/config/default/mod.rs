@@ -92,11 +92,12 @@ fn update_internal(config: &mut Table) {
 }
 
 pub fn update(
+	auto: bool,
 	msg: String,
 	config: &mut Table,
 	f: impl FnOnce(fn(&mut Table), &mut Table) -> io::Result<()>,
 ) -> io::Result<()> {
-	if config.get("auto_update_config").is_some_and(|value| value.as_bool().unwrap_or_default()) {
+	if auto || config.get("auto_update_config").is_some_and(|value| value.as_bool().unwrap_or_default()) {
 		f(update_internal, config)
 	} else {
 		input!(format!(
