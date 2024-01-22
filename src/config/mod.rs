@@ -249,6 +249,8 @@ pub struct Config {
 	pub progress_bars: bool,
 	pub spinner_chars: String,
 	pub progress_chars: String,
+	pub tar_bar_color: String,
+	pub xz_bar_color: String,
 	pub level: u32,
 	pub threads: u32,
 	pub block_size: u64,
@@ -557,6 +559,12 @@ Create backup using default configuration? [{}/{}]",
 		),
 		progress_chars: parse_config_field!(
 			config.progress_bars.progress_chars [default: String::from(PROGRESS_BAR)] -> String
+		),
+		tar_bar_color: parse_config_field!(
+			config.progress_bars.tar_bar_color [default: String::from("yellow")] -> String
+		),
+		xz_bar_color: parse_config_field!(
+			config.progress_bars.xz_bar_color [default: String::from("magenta")] -> String
 		),
 		level: parse_config_field!(cli.level || config.xz.level -> u32),
 		threads: parse_config_field!(cli.threads || config.xz.threads -> u32),

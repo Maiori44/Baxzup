@@ -48,6 +48,8 @@ pub fn get() -> Table {
 		enable = true
 		spinner_chars = spinner_chars
 		progress_chars = PROGRESS_BAR
+		tar_bar_color = "yellow"
+		xz_bar_color = "magenta"
 
 		[xz]
 		level = 8

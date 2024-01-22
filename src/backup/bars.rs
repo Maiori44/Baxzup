@@ -25,10 +25,21 @@ fn check_chars(name: &str, chars: &str) -> Result<(), String> {
 	if chars.chars().count() < 2 {
 		Err(format!(
 			"`{}` must contain at least 2 characters",
-			name.cyan().bold()
+			name.yellow().bold()
 		))
 	} else {
 		Ok(())
+	}
+}
+
+fn check_color(name: &str, color: &str) -> Result<(), String> {
+	if color.chars().all(|c| c == '_' || c == '/' || c.is_ascii_alphanumeric()) {
+		Ok(())
+	} else {
+		Err(format!(
+			"`{}` has an invalid value",
+			name.yellow().bold()
+		))
 	}
 }
 
@@ -37,22 +48,29 @@ impl BarsHandler {
 		if !*config!(progress_bars) {
 			return Ok(());
 		}
-		let (spinner_chars, progress_chars) = config!(spinner_chars, progress_chars);
+		let (spinner_chars, progress_chars, tar_bar_color, xz_bar_color) = config!(
+			spinner_chars,
+			progress_chars,
+			tar_bar_color,
+			xz_bar_color
+		);
 		check_chars("progress_bars.spinner_chars", spinner_chars)?;
 		check_chars("progress_bars.progress_chars", progress_chars)?;
+		check_color("progress_bars.tar_bar_color", &tar_bar_color)?;
+		check_color("progress_bars.xz_bar_color", &xz_bar_color)?;
 		let multi = MultiProgress::new();
 		let tar_bar = ProgressBar::new(0).with_message("Archiving".cyan().bold().to_string()).with_style(
-			ProgressStyle::with_template(
-				"{msg}   {spinner} [{elapsed_precise}] {wide_bar:.yellow} {percent:>3}%"
-			)
+			ProgressStyle::with_template(&format!(
+				"{{msg}}   {{spinner}} [{{elapsed_precise}}] {{wide_bar:.{tar_bar_color}}} {{percent:>3}}%"
+			))
 			.unwrap()
 			.tick_chars(spinner_chars)
 			.progress_chars(progress_chars)
 		);
 		let xz_bar = ProgressBar::new(0).with_message("Compressing".cyan().bold().to_string()).with_style(
-			ProgressStyle::with_template(
-				"{msg} {spinner} [{elapsed_precise}] {wide_bar:.magenta} {percent:>3}%"
-			)
+			ProgressStyle::with_template(&format!(
+				"{{msg}} {{spinner}} [{{elapsed_precise}}] {{wide_bar:.{xz_bar_color}}} {{percent:>3}}%"
+			))
 			.unwrap()
 			.tick_chars(spinner_chars)
 			.progress_chars(progress_chars)
