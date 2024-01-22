@@ -17,6 +17,7 @@ use clap::{
 	crate_description,
 	crate_authors,
 	crate_name,
+	ValueEnum,
 	Parser,
 };
 use colored::Colorize;
@@ -115,6 +116,10 @@ struct Cli {
 	#[arg(short, long)]
 	quiet: bool,
 
+	/// Colorize the output
+	#[clap(long, value_enum, ignore_case(true), default_value = "auto", value_name = "WHEN")]
+	color: ColorMode,
+
 	/// Paths to the directories/files to add to the backup [default: use configuration]
 	#[arg(short, long, value_delimiter = ',')]
 	paths: Option<Vec<PathBuf>>,
@@ -179,6 +184,13 @@ struct Cli {
 	/// Update any outdated configuration automatically instead of asking
 	#[arg(short, long)]
 	auto_update_config: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum ColorMode {
+	Auto,
+	Always,
+	Never
 }
 
 trait ToOption<T> {
@@ -349,6 +361,9 @@ fn parse_name_capture(caps: &Captures) -> String {
 
 pub fn init() -> Result<(), Box<dyn Error>> {
 	let cli = Cli::parse();
+	if cli.color != ColorMode::Auto {
+		colored::control::set_override(cli.color == ColorMode::Always);
+	}
 	let config_path_str = if cli.default_config {
 		"--default-config".cyan().bold()
 	} else {
