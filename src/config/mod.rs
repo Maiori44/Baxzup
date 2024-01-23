@@ -84,7 +84,11 @@ pub(crate) use assert_config;
 		.error(AnsiColor::Red.on_default().effects(Effects::BOLD))
 		.valid(AnsiColor::Cyan.on_default().effects(Effects::BOLD))
 		.invalid(AnsiColor::Yellow.on_default().effects(Effects::BOLD)),
-	about = format!("{}\nMade by {}\n\n(CLI still unfinished!)", crate_description!(), crate_authors!()),
+	about = format!(
+		"{}\nMade by {}\nhttps://github.com/Maiori44/Baxzup",
+		crate_description!(),
+		crate_authors!()
+	),
 	long_about = None
 )]
 struct Cli {
@@ -609,5 +613,5 @@ Create backup using default configuration? [{}/{}]",
 			"Loaded".green().bold()
 		);
 	}
-	Ok(()) //TODO: finish cli
+	Ok(())
 }
