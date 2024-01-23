@@ -8,6 +8,7 @@ use std::{
 	fmt::{Debug, Display},
 	collections::HashMap,
 	ffi::OsString,
+	env,
 	fs,
 	io,
 };
@@ -363,8 +364,13 @@ fn parse_name_capture(caps: &Captures) -> String {
 
 pub fn init() -> Result<(), Box<dyn Error>> {
 	let cli = Cli::parse();
-	if cli.color != ColorMode::Auto {
-		colored::control::set_override(cli.color == ColorMode::Always);
+	match cli.color {
+		ColorMode::Auto => env::set_var("CLICOLOR", "1"),
+		ColorMode::Always => env::set_var("CLICOLOR_FORCE", "1"),
+		ColorMode::Never => {
+			env::set_var("CLICOLOR_FORCE", "0");
+			env::set_var("CLICOLOR", "0");
+		}
 	}
 	let config_path_str = if cli.default_config {
 		"--default-config".cyan().bold()
