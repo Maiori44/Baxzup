@@ -5,14 +5,14 @@ use std::{
 	sync::{OnceLock, Mutex},
 	error::Error,
 	str::FromStr,
-	fmt::{Debug, Display},
+	fmt::Debug,
 	collections::HashMap,
 	ffi::OsString,
 	env,
 	fs,
 	io,
 };
-use chrono::{Local, format::StrftimeItems, Offset};
+use chrono::{Local, format::{DelayedFormat, Item, StrftimeItems}};
 use clap::{
 	builder::{Styles, styling::{AnsiColor, Effects}},
 	crate_description,
@@ -214,22 +214,6 @@ impl<T> ToOption<T> for Option<T> {
 	}
 }
 
-struct Item<'a> (chrono::format::Item<'a>);
-
-impl Display for Item<'_> {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let date = Local::now();
-		let offset = date.offset();
-		chrono::format::format_item(
-			f,
-			Some(&date.date_naive()),
-			Some(&date.time()),
-			Some(&(offset.to_string(), offset.fix())),
-			&self.0
-		)
-	}
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TagKeepMode {
 	/// Keep the tagged folder with only the tag inside.
@@ -309,6 +293,16 @@ fn parse_excluded_pattern(s: &str) -> Result<bytes::Regex, &str> {
 	}).unwrap_or_exit())
 }
 
+fn format_items(items: Vec<Item>) -> String {
+	let date = Local::now();
+	DelayedFormat::new_with_offset(
+		Some(date.date_naive()),
+		Some(date.time()),
+		date.offset(),
+		items.iter()
+	).to_string()
+}
+
 fn parse_name_capture(caps: &Captures) -> String {
 	if let Some(group) = caps.get(1) {
 		let result = match group.as_str() {
@@ -343,26 +337,25 @@ fn parse_name_capture(caps: &Captures) -> String {
 		}
 	} else {
 		let captured = caps.get(0).unwrap().as_str();
-		let mut result = String::new();
 		let mut iter = StrftimeItems::new(captured);
+		let mut items = Vec::new();
 		while let Some(item) = iter.next() {
-			use chrono::format::Item::Error;
-			if item == Error {
-				let mut suffix = String::new();
+			if item == Item::Error {
+				items.clear();
 				for item in iter {
-					if item != Error {
-						suffix += &Item(item).to_string()
+					if item != Item::Error {
+						items.push(item);
 					}
 				}
 				error::handler(format!(
 					"unknown specifier `{}`",
-					captured.strip_suffix(&suffix).unwrap_or(captured).yellow().bold()
+					captured.strip_suffix(&format_items(items)).unwrap_or(captured).yellow().bold()
 				));
 			} else {
-				result += &Item(item).to_string();
+				items.push(item);
 			}
 		}
-		result
+		format_items(items)
 	}
 }
 

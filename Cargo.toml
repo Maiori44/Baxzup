@@ -11,18 +11,18 @@ keywords = ["xz", "tar", "backup", "compressor"]
 categories = ["command-line-utilities", "filesystem"]
 
 [dependencies]
-clap = { version = "4.4.11", features = ["derive", "cargo", "wrap_help", "string"] }
+clap = { version = "4.4.18", features = ["derive", "cargo", "wrap_help", "string"] }
 toml = { version = "0.8.8", features = ["preserve_order"] }
 colored = "2.1.0"
 dirs = "5.0.1"
-sysinfo = "0.30.2"
-regex = "1.10.2"
-chrono = "0.4.31"
+sysinfo = "0.30.5"
+regex = "1.10.3"
+chrono = "0.4.32"
 xz2 = "0.1.7"
 tar = "0.4.40"
 os_pipe = "1.1.5"
 indicatif = "0.17.7"
-supports-unicode = "2.0.0"
+supports-unicode = "2.1.0"
 
 [target.'cfg(windows)'.dependencies]
 fs4 = "0.7.0"
