@@ -46,12 +46,12 @@ pub fn init() -> io::Result<()> {
 	assert_config!(
 		config.level > 9,
 		"`{}` cannot exceed 9",
-		"xz.level".cyan().bold()
+		"xz.level".yellow().bold()
 	);
 	assert_config!(
 		config.threads < 1,
 		"`{}` must be at least 1",
-		"xz.threads".cyan().bold()
+		"xz.threads".yellow().bold()
 	);
 	let mut compressor = XzEncoder::new_stream(
 		reader,
