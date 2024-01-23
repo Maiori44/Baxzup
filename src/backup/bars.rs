@@ -1,6 +1,6 @@
 use std::{thread::{JoinHandle, self}, time::Duration, io::{Read, self, Write}, sync::{OnceLock, RwLock}, path::PathBuf};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use crate::config::config;
+use crate::config::{assert_config, config};
 use super::{tar::scan_path, get_output_file_id};
 use xz2::read::XzEncoder;
 use colored::Colorize;
@@ -21,30 +21,26 @@ pub const PROGRESS_BAR: &str = "█░";
 
 static BARS_HANDLER: RwLock<OnceLock<BarsHandler>> = RwLock::new(OnceLock::new());
 
-fn check_chars(name: &str, chars: &str) -> Result<(), String> {
-	if chars.chars().count() < 2 {
-		Err(format!(
-			"`{}` must contain at least 2 characters",
-			name.yellow().bold()
-		))
-	} else {
-		Ok(())
-	}
+fn check_chars(name: &str, chars: &str) -> io::Result<()> {
+	assert_config!(
+		chars.chars().count() < 2,
+		"`{}` must contain at least 2 characters",
+		name.yellow().bold()
+	);
+	Ok(())
 }
 
-fn check_color(name: &str, color: &str) -> Result<(), String> {
-	if color.chars().all(|c| c == '_' || c == '/' || c.is_ascii_alphanumeric()) {
-		Ok(())
-	} else {
-		Err(format!(
-			"`{}` has an invalid value",
-			name.yellow().bold()
-		))
-	}
+fn check_color(name: &str, color: &str) -> io::Result<()> {
+	assert_config!(
+		color.chars().any(|c| !(c == '_' || c == '/' || c.is_ascii_alphanumeric())),
+		"`{}` has an invalid value",
+		name.yellow().bold()
+	);
+	Ok(())
 }
 
 impl BarsHandler {
-	pub fn init<R: Read>(compressor: *const XzEncoder<R>) -> Result<(), String> {
+	pub fn init<R: Read>(compressor: *const XzEncoder<R>) -> io::Result<()> {
 		if !*config!(progress_bars) {
 			return Ok(());
 		}

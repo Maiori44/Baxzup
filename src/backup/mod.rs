@@ -83,7 +83,7 @@ pub fn init() -> io::Result<()> {
 			.create_new(true)
 			.open(&config.name)?
 	};
-	BarsHandler::init(&compressor).to_io_result()?;
+	BarsHandler::init(&compressor)?;
 	#[cfg(windows)]
 	{
 		use fs4::FileExt;
