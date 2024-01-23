@@ -52,8 +52,8 @@ impl BarsHandler {
 		);
 		check_chars("progress_bars.spinner_chars", spinner_chars)?;
 		check_chars("progress_bars.progress_chars", progress_chars)?;
-		check_color("progress_bars.tar_bar_color", &tar_bar_color)?;
-		check_color("progress_bars.xz_bar_color", &xz_bar_color)?;
+		check_color("progress_bars.tar_bar_color", tar_bar_color)?;
+		check_color("progress_bars.xz_bar_color", xz_bar_color)?;
 		let multi = MultiProgress::new();
 		let tar_bar = ProgressBar::new(0).with_message("Archiving".cyan().bold().to_string()).with_style(
 			ProgressStyle::with_template(&format!(
