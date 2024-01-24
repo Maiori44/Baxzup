@@ -2,6 +2,7 @@ use std::{io, fmt::Display, process, panic::PanicInfo, fs, backtrace::{Backtrace
 use crate::backup::bars::BarsHandler;
 use chrono::Local;
 use colored::Colorize;
+
 pub trait ResultExt<T> {
 	fn unwrap_or_exit(self) -> T;
 
