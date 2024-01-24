@@ -7,7 +7,7 @@ mod backup;
 
 macro_rules! input {
 	($question:expr => { $($char:literal => $code:expr,)+ _ => $default:expr, }) => {{
-		println!("{}", $question);
+		eprintln!("{}", $question);
 		let mut choice = String::new();
 		io::stdin().read_line(&mut choice).unwrap_or_exit();
 		match choice.trim_start().as_bytes().first() {

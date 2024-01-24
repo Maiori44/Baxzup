@@ -24,6 +24,7 @@ use clap::{
 use colored::Colorize;
 use dirs::config_dir;
 use regex::{bytes, Regex, Captures};
+use shh::ShhStdout;
 use sysinfo::{System, User, RefreshKind, ProcessRefreshKind, Users};
 use toml::{value::Array, Table, Value};
 use crate::{error::{self, ResultExt}, input, backup::bars::{UNICODE_SPINNER, PROGRESS_BAR}};
@@ -369,15 +370,20 @@ pub fn init() -> Result<(), Box<dyn Error>> {
 			env::set_var("CLICOLOR", "0");
 		}
 	}
+	if cli.quiet {
+		//force SHOULD_COLORIZE to be created before stdout is silenced,
+		//to avoid it mistakenly disabling colors
+		colored::control::SHOULD_COLORIZE.should_colorize();
+		static SHH: OnceLock<ShhStdout> = OnceLock::new();
+		SHH.set(shh::stdout()?).unwrap_or(());
+	}
 	let config_path_str = if cli.default_config {
 		"--default-config".cyan().bold()
 	} else {
 		cli.config_path.to_string_lossy().cyan().bold()
 	};
 	if !(cli.config_path.exists() || cli.default_config) {
-		if !cli.quiet {
-			println!("{} configuration file not found, generating default...", "notice:".cyan().bold());
-		}
+		println!("{} configuration file not found, generating default...", "notice:".cyan().bold());
 		if let Some(parent) = cli.config_path.parent() {
 			fs::create_dir_all(parent)?;
 		}
@@ -392,9 +398,7 @@ Create backup using default configuration? [{}/{}]",
 			_ => process::exit(0),
 		});
 	}
-	if !cli.quiet {
-		println!("{} configuration... (`{config_path_str}`)", "Loading".cyan().bold());
-	}
+	println!("{} configuration... (`{config_path_str}`)", "Loading".cyan().bold());
 	let mut config = if cli.default_config {
 		default::get()
 	} else {
@@ -595,16 +599,14 @@ Create backup using default configuration? [{}/{}]",
 			)
 	);
 	CONFIG.set(config).unwrap();
-	if !cli.quiet {
-		println!(
-			"{}{} configuration! (`{config_path_str}`)",
-			if *config!(progress_bars) {
-				"\x1b[2J\x1b[H"
-			} else {
-				"\x1b[A\x1b[K"
-			},
-			"Loaded".green().bold()
-		);
-	}
+	println!(
+		"{}{} configuration! (`{config_path_str}`)",
+		if *config!(progress_bars) {
+			"\x1b[2J\x1b[H"
+		} else {
+			"\x1b[A\x1b[K"
+		},
+		"Loaded".green().bold()
+	);
 	Ok(())
 }
