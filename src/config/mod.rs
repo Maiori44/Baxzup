@@ -24,7 +24,6 @@ use clap::{
 use colored::Colorize;
 use dirs::config_dir;
 use regex::{bytes, Regex, Captures};
-use shh::ShhStdout;
 use sysinfo::{System, User, RefreshKind, ProcessRefreshKind, Users};
 use toml::{value::Array, Table, Value};
 use crate::{error::{self, ResultExt}, input, backup::bars::{UNICODE_SPINNER, PROGRESS_BAR}};
@@ -374,8 +373,7 @@ pub fn init() -> Result<(), Box<dyn Error>> {
 		//force SHOULD_COLORIZE to be created before stdout is silenced,
 		//to avoid it mistakenly disabling colors
 		colored::control::SHOULD_COLORIZE.should_colorize();
-		static SHH: OnceLock<ShhStdout> = OnceLock::new();
-		SHH.set(shh::stdout()?).unwrap_or(());
+		Box::leak(Box::new(shh::stdout()?));
 	}
 	let config_path_str = if cli.default_config {
 		"--default-config".cyan().bold()

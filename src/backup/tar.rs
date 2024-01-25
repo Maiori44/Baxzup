@@ -1,7 +1,8 @@
 use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}};
 use crate::{config::{TagKeepMode, config}, error::ResultExt, input};
-use super::{bars::BarsHandler, OutputFileID, get_output_file_id};
+use super::bars::BarsHandler;
 use colored::Colorize;
+use fs_id::{FileID, GetID};
 use tar::Builder;
 
 fn failed_access(path: &Path, e: &io::Error) -> bool {
@@ -27,7 +28,7 @@ fn failed_access(path: &Path, e: &io::Error) -> bool {
 }
 
 pub fn scan_path(
-	output_file_id: OutputFileID,
+	output_file_id: FileID,
 	path: PathBuf,
 	name: PathBuf,
 	failed_access: &impl Fn(&Path, &io::Error) -> bool,
@@ -52,19 +53,15 @@ pub fn scan_path(
 		};
 	}
 
+	if output_file_id == try_access!(path.get_id()) {
+		println!("skipping itself");
+		return Ok(());
+	}
 	let meta = try_access!(if config.follow_symlinks {
 		path.metadata()
 	} else {
 		path.symlink_metadata()
 	});
-	#[cfg(unix)]
-	{
-		use std::os::unix::fs::MetadataExt;
-
-		if output_file_id == (meta.dev(), meta.ino()) {
-			return Ok(());
-		}
-	}
 	if meta.is_dir() && (config.follow_symlinks || !meta.is_symlink()) {
 		let mut contents = Vec::new();
 		for entry in try_access!(path.read_dir()) {
@@ -93,7 +90,7 @@ pub fn scan_path(
 	Ok(())
 }
 
-pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<()> {
+pub fn spawn_thread<W: Write + Send + 'static>(writer: W, output_file_id: FileID) -> JoinHandle<()> {
 	thread::spawn(move || {
 		let config = config!();
 		let mut builder = Builder::new(writer);
@@ -118,8 +115,9 @@ pub fn spawn_thread<W: Write + Send + 'static>(writer: W) -> JoinHandle<()> {
 				}
 			};
 			#[cfg(unix)]
-			let name = Path::new(path.file_name().unwrap_or_else(|| std::ffi::OsStr::new("root"))).to_path_buf();
-			let output_file_id = get_output_file_id(config);
+			let name = Path::new(
+				path.file_name().unwrap_or_else(|| std::ffi::OsStr::new("root"))
+			).to_path_buf();
 			if config.progress_bars {
 				scan_path(output_file_id, path, name, &|path, e| {
 					unsafe {

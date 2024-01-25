@@ -1,7 +1,8 @@
 use std::{thread::{JoinHandle, self}, time::Duration, io::{Read, self, Write}, sync::{OnceLock, RwLock}, path::PathBuf};
+use fs_id::FileID;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use crate::config::{assert_config, config};
-use super::{tar::scan_path, get_output_file_id};
+use super::tar::scan_path;
 use xz2::read::XzEncoder;
 use colored::Colorize;
 
@@ -40,7 +41,7 @@ fn check_color(name: &str, color: &str) -> io::Result<()> {
 }
 
 impl BarsHandler {
-	pub fn init<R: Read>(compressor: *const XzEncoder<R>) -> io::Result<()> {
+	pub fn init<R: Read>(compressor: *const XzEncoder<R>, output_file_id: FileID) -> io::Result<()> {
 		if !*config!(progress_bars) {
 			return Ok(());
 		}
@@ -125,7 +126,7 @@ impl BarsHandler {
 				for path_ref in &config.paths {
 					if let Ok(path) = path_ref.canonicalize() {
 						let _ = scan_path(
-							get_output_file_id(config),
+							output_file_id,
 							path,
 							PathBuf::new(),
 							&|_, _| true,

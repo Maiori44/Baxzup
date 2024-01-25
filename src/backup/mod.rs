@@ -1,28 +1,12 @@
+use fs_id::GetID;
 use xz2::{read::XzEncoder, stream::MtStreamBuilder};
-use crate::{config::{config, assert_config, Config}, error::ResultExt, input};
+use crate::{config::{config, assert_config}, error::ResultExt, input};
 use self::bars::BarsHandler;
 use std::{io::{self, Write}, fs::{self, File}, path::Path, process};
 use colored::Colorize;
 
 pub mod bars;
 mod tar;
-
-#[cfg(windows)]
-pub type OutputFileID = ();
-
-#[cfg(windows)]
-pub fn get_output_file_id(_: &Config) -> OutputFileID {}
-
-#[cfg(unix)]
-pub type OutputFileID = (u64, u64);
-
-#[cfg(unix)]
-pub fn get_output_file_id(config: &Config) -> OutputFileID {
-    use std::os::unix::fs::MetadataExt;
-
-	let meta = fs::metadata(&config.name).unwrap_or_exit();
-	(meta.dev(), meta.ino())
-}
 
 struct WriterObserver<W: Write> (W);
 
@@ -83,13 +67,10 @@ pub fn init() -> io::Result<()> {
 			.create_new(true)
 			.open(&config.name)?
 	};
-	BarsHandler::init(&compressor)?;
-	#[cfg(windows)]
-	{
-		use fs4::FileExt;
-		output_file.try_lock_exclusive()?;
-	}
-	let tar_thread = tar::spawn_thread(writer);
+	let output_file_id = output_file.get_id().unwrap();
+	println!("{output_file_id:?}");
+	BarsHandler::init(&compressor, output_file_id)?;
+	let tar_thread = tar::spawn_thread(writer, output_file_id);
 	if config.progress_bars {
 		io::copy(&mut compressor, &mut output_file)
 	} else {
