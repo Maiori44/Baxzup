@@ -46,10 +46,14 @@ pub fn init() -> io::Result<()> {
 			.encoder()
 			.to_io_result()?
 	);
+	let path_name = Path::new(&config.name);
+	if let Some(parent) = path_name.parent() {
+		fs::create_dir_all(parent)?;
+	}
 	let mut output_file = if config.force_overwrite {
-		File::create(&config.name)?
+		File::create(path_name)?
 	} else {
-		if AsRef::<Path>::as_ref(&config.name).exists() {
+		if path_name.exists() {
 			input!(format!(
 				"{} a file named `{}` already exists\nOverwrite? [{}/{}]",
 				"warning:".yellow().bold(),
@@ -57,7 +61,7 @@ pub fn init() -> io::Result<()> {
 				"y".cyan().bold(),
 				"N".cyan().bold()
 			) => {
-				b'y' => fs::remove_file(&config.name)?,
+				b'y' => fs::remove_file(path_name)?,
 				_ => process::exit(0),
 			})
 		}
@@ -65,10 +69,9 @@ pub fn init() -> io::Result<()> {
 			.read(true)
 			.write(true)
 			.create_new(true)
-			.open(&config.name)?
+			.open(path_name)?
 	};
-	let output_file_id = output_file.get_id().unwrap();
-	println!("{output_file_id:?}");
+	let output_file_id = output_file.get_id()?;
 	BarsHandler::init(&compressor, output_file_id)?;
 	let tar_thread = tar::spawn_thread(writer, output_file_id);
 	if config.progress_bars {
