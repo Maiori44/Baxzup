@@ -53,10 +53,6 @@ pub fn scan_path(
 		};
 	}
 
-	if output_file_id == try_access!(path.get_id()) {
-		println!("skipping itself");
-		return Ok(());
-	}
 	let meta = try_access!(if config.follow_symlinks {
 		path.metadata()
 	} else {
@@ -65,7 +61,7 @@ pub fn scan_path(
 	if meta.is_dir() && (config.follow_symlinks || !meta.is_symlink()) {
 		let mut contents = Vec::new();
 		for entry in try_access!(path.read_dir()) {
-			let entry = entry?;
+			let entry = try_access!(entry);
 			if let Some(mode) = config.exclude_tags.get(&entry.file_name()).copied() {
 				if mode == TagKeepMode::None {
 					return Ok(())
@@ -85,6 +81,9 @@ pub fn scan_path(
 			scan_path(output_file_id, entry_path, name.join(entry.file_name()), failed_access, action)?;
 		}
 	} else {
+		if output_file_id == try_access!(path.get_id()) {
+			return Ok(());
+		}
 		try_access!(action(&path, &name));
 	}
 	Ok(())
