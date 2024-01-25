@@ -102,11 +102,11 @@ impl BarsHandler {
 					loop {
 						xz_bar.set_position(compressor.total_in());
 						if prev_out < compressor.total_out() {
-							prev_out = compressor.total_out();
 							status_bar.set_message(format!(
 								"Writing {} compressed bytes",
-								prev_out.to_string().cyan().bold()
+								(compressor.total_out() - prev_out).to_string().cyan().bold()
 							));
+							prev_out = compressor.total_out();
 						}
 						counter = counter.wrapping_add(1);
 						if counter & 16 == 0 {
