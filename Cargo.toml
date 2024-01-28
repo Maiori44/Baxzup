@@ -17,14 +17,14 @@ colored = "2.1.0"
 dirs = "5.0.1"
 sysinfo = "0.30.5"
 regex = "1.10.3"
-chrono = "0.4.32"
+chrono = "0.4.33"
 xz2 = "0.1.7"
 tar = "0.4.40"
 os_pipe = "1.1.5"
 indicatif = "0.17.7"
 supports-unicode = "2.1.0"
 shh = "1.0.1"
-fs-id = { path = "../../Documenti/fs-id" }
+fs-id = "0.2.0"
 
 [features]
 default = []
