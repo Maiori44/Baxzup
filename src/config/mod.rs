@@ -260,15 +260,17 @@ fn parse_excluded_tag((name, mode): (&String, &Value)) -> Result<(OsString, TagK
 	)))
 }
 
-fn get_user() -> Option<&'static User> {
-	static USERS: OnceLock<Users> = OnceLock::new();
-	USERS.get_or_init(Users::new_with_refreshed_list).get_user_by_id(
-		System::new_with_specifics(RefreshKind::new()
-			.with_processes(ProcessRefreshKind::new().with_user(sysinfo::UpdateKind::Always)))
-			.process(sysinfo::get_current_pid().unwrap())
+fn get_from_user<T>(f: impl FnOnce(&User) -> T) -> Option<T> {
+	let users = Users::new_with_refreshed_list();
+	let system = System::new_with_specifics(
+		RefreshKind::new()
+			.with_processes(ProcessRefreshKind::new().with_user(sysinfo::UpdateKind::Always))
+	);
+	users.get_user_by_id(
+		system.process(sysinfo::get_current_pid().unwrap())
 			.unwrap()
 			.user_id()?
-	)
+	).map(f)
 }
 
 fn unknown() -> String {
@@ -309,17 +311,14 @@ fn parse_name_capture(caps: &Captures) -> String {
 			"!hostname" => Some(System::host_name().unwrap_or_else(unknown)),
 			"!systemname" => Some(System::name().unwrap_or_else(unknown)),
 			"!systemid" => Some(System::distribution_id()),
-			"!username" => Some(match get_user() {
-				Some(user) => String::from(user.name()),
-				None => unknown(),
-			}),
+			"!username" => Some(get_from_user(|user| user.name().to_string()).unwrap_or_else(unknown)),
 			#[cfg(windows)]
 			"!groupname" => Some(unknown()),
 			#[cfg(unix)]
-			"!groupname" => Some(match get_user() {
-				Some(user) => {
-					let gid = user.group_id();
-					let group = user.groups().into_iter().find(|x| *x.id() == gid);
+			"!groupname" => Some(match get_from_user(|user| {
+				user.groups().into_iter().find(|x| *x.id() == user.group_id())
+			}) {
+				Some(group) => {
 					group.map_or_else(unknown, |group| String::from(group.name()))
 				},
 				None => unknown()
