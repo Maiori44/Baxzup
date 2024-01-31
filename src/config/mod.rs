@@ -174,6 +174,10 @@ struct Cli {
 	#[arg(short, long)]
 	name: Option<String>,
 
+	/// Show 2 progress bars displaying how much was archived and compressed [default: use configuration]
+	#[arg(long, value_name = "ENABLE", default_missing_value = "true", num_args = 0..=1)]
+	progress_bars: Option<bool>,
+
 	/// Compression level for XZ (0-9) [default: use configuration]
 	#[arg(short, long)]
 	level: Option<u32>,
@@ -556,7 +560,7 @@ Create backup using default configuration? [{}/{}]",
 		progress_bars: if cli.quiet {
 			false
 		} else {
-			parse_config_field!(config.progress_bars.enable -> bool)
+			parse_config_field!(cli.progress_bars || config.progress_bars.enable -> bool)
 		},
 		spinner_chars: parse_config_field!(
 			config.progress_bars.spinner_chars [default: String::from(UNICODE_SPINNER)] -> String
