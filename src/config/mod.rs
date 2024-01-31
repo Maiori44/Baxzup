@@ -178,6 +178,14 @@ struct Cli {
 	#[arg(long, value_name = "ENABLE", default_missing_value = "true", num_args = 0..=1)]
 	progress_bars: Option<bool>,
 
+	/// The colored to be used for the "Archiving" progress bar [default: use configuration]
+	#[arg(long, value_name = "COLOR")]
+	tar_bar_color: Option<String>,
+
+	/// The colored to be used for the "Compressing" progress bar [default: use configuration]
+	#[arg(long, value_name = "COLOR")]
+	xz_bar_color: Option<String>,
+
 	/// Compression level for XZ (0-9) [default: use configuration]
 	#[arg(short, long)]
 	level: Option<u32>,
@@ -569,10 +577,12 @@ Create backup using default configuration? [{}/{}]",
 			config.progress_bars.progress_chars [default: String::from(PROGRESS_BAR)] -> String
 		),
 		tar_bar_color: parse_config_field!(
-			config.progress_bars.tar_bar_color [default: String::from("yellow")] -> String
+			cli.tar_bar_color
+			|| config.progress_bars.tar_bar_color [default: String::from("yellow")] -> String
 		),
 		xz_bar_color: parse_config_field!(
-			config.progress_bars.xz_bar_color [default: String::from("magenta")] -> String
+			cli.xz_bar_color
+			|| config.progress_bars.xz_bar_color [default: String::from("magenta")] -> String
 		),
 		level: parse_config_field!(cli.level || config.xz.level -> u32),
 		threads: parse_config_field!(cli.threads || config.xz.threads -> u32),
