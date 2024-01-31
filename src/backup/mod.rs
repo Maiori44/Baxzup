@@ -2,7 +2,7 @@ use fs_id::GetID;
 use xz2::{read::XzEncoder, stream::MtStreamBuilder};
 use crate::{config::{config, assert_config}, error::ResultExt, input};
 use self::bars::BarsHandler;
-use std::{io::{self, Write}, fs::{self, File}, path::Path, process};
+use std::{fs::{self, File}, io::{self, Write}, path::Path, process, thread};
 use colored::Colorize;
 
 pub mod bars;
@@ -32,16 +32,16 @@ pub fn init() -> io::Result<()> {
 		"`{}` cannot exceed 9",
 		"xz.level".yellow().bold()
 	);
-	assert_config!(
-		config.threads < 1,
-		"`{}` must be at least 1",
-		"xz.threads".yellow().bold()
-	);
+	println!("{:?}", thread::available_parallelism());
 	let mut compressor = XzEncoder::new_stream(
 		reader,
 		MtStreamBuilder::new()
 			.preset(config.level)
-			.threads(config.threads)
+			.threads(if config.threads == 0 {
+				thread::available_parallelism()?.get() as u32
+			} else {
+				config.threads
+			})
 			.block_size(config.block_size)
 			.encoder()
 			.to_io_result()?
