@@ -2,7 +2,7 @@ use crate::{backup::bars::{spinner_chars, PROGRESS_BAR}, input, error::ResultExt
 use sysinfo::{System, RefreshKind, CpuRefreshKind};
 use toml::{toml, Value, Table};
 use colored::Colorize;
-use std::io;
+use std::{io, num::NonZeroUsize, thread};
 
 #[cfg(windows)]
 mod windows;
@@ -26,12 +26,9 @@ mod linux;
 use linux as specifics;
 
 pub fn get() -> Table {
-	let system = System::new_with_specifics(
-		RefreshKind::new()
-			//.with_memory(MemoryRefreshKind::new().with_ram())
-			.with_cpu(CpuRefreshKind::new())
-	);
-	let threads = system.cpus().len();
+	let threads = thread::available_parallelism().map_or_else(|_| {
+		System::new_with_specifics(RefreshKind::new().with_cpu(CpuRefreshKind::new())).cpus().len()
+	}, NonZeroUsize::get);
 	let spinner_chars = spinner_chars();
 	let mut config = toml! {
 		[backup]
