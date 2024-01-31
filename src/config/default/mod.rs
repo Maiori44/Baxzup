@@ -1,7 +1,6 @@
-use crate::{backup::bars::{UNICODE_SPINNER, ASCII_SPINNER, PROGRESS_BAR}, input, error::ResultExt};
+use crate::{backup::bars::{spinner_chars, PROGRESS_BAR}, input, error::ResultExt};
 use sysinfo::{System, RefreshKind, CpuRefreshKind};
 use toml::{toml, Value, Table};
-use supports_unicode::Stream;
 use colored::Colorize;
 use std::io;
 
@@ -33,7 +32,7 @@ pub fn get() -> Table {
 			.with_cpu(CpuRefreshKind::new())
 	);
 	let threads = system.cpus().len();
-	let spinner_chars = if supports_unicode::on(Stream::Stderr) { UNICODE_SPINNER } else { ASCII_SPINNER };
+	let spinner_chars = spinner_chars();
 	let mut config = toml! {
 		[backup]
 		paths = []

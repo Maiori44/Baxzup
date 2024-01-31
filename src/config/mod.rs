@@ -26,7 +26,7 @@ use dirs::config_dir;
 use regex::{bytes, Regex, Captures};
 use sysinfo::{System, User, RefreshKind, ProcessRefreshKind, Users};
 use toml::{value::Array, Table, Value};
-use crate::{error::{self, ResultExt}, input, backup::bars::{UNICODE_SPINNER, PROGRESS_BAR}};
+use crate::{error::{self, ResultExt}, input, backup::bars::{spinner_chars, PROGRESS_BAR}};
 
 mod default;
 
@@ -563,7 +563,7 @@ Create backup using default configuration? [{}/{}]",
 			parse_config_field!(cli.progress_bars || config.progress_bars.enable -> bool)
 		},
 		spinner_chars: parse_config_field!(
-			config.progress_bars.spinner_chars [default: String::from(UNICODE_SPINNER)] -> String
+			config.progress_bars.spinner_chars [default: spinner_chars().to_string()] -> String
 		),
 		progress_chars: parse_config_field!(
 			config.progress_bars.progress_chars [default: String::from(PROGRESS_BAR)] -> String

@@ -23,7 +23,7 @@ pub const PROGRESS_BAR: &str = "█░";
 static BARS_HANDLER: RwLock<OnceLock<BarsHandler>> = RwLock::new(OnceLock::new());
 
 pub fn spinner_chars() -> &'static str {
-	if supports_unicode::on(Stream::Stderr) {
+	if supports_unicode::supports_unicode() {
 		UNICODE_SPINNER
 	} else {
 		ASCII_SPINNER
