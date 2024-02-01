@@ -32,7 +32,6 @@ pub fn init() -> io::Result<()> {
 		"`{}` cannot exceed 9",
 		"xz.level".yellow().bold()
 	);
-	println!("{:?}", thread::available_parallelism());
 	let mut compressor = XzEncoder::new_stream(
 		reader,
 		MtStreamBuilder::new()
