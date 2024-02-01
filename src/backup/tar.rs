@@ -33,11 +33,11 @@ pub fn scan_path(
 	name: PathBuf,
 	failed_access: &impl Fn(&Path, &io::Error) -> bool,
 	action: &mut impl FnMut(&PathBuf, &PathBuf) -> io::Result<()>,
-) -> io::Result<()> {
+) {
 	let config = config!();
 	for pattern in &config.exclude {
 		if pattern.is_match(path.as_os_str().as_encoded_bytes()) {
-			return Ok(());
+			return;
 		}
 	}
 
@@ -46,7 +46,7 @@ pub fn scan_path(
 			loop {
 				match $f {
 					Ok(result) => break result,
-					Err(e) if failed_access(&path, &e) => return Ok(()),
+					Err(e) if failed_access(&path, &e) => return,
 					_ => {}
 				}
 			}
@@ -64,7 +64,7 @@ pub fn scan_path(
 			let entry = try_access!(entry);
 			if let Some(mode) = config.exclude_tags.get(&entry.file_name()).copied() {
 				if mode == TagKeepMode::None {
-					return Ok(())
+					return;
 				} else {
 					contents.clear();
 					if mode == TagKeepMode::Tag {
@@ -78,15 +78,14 @@ pub fn scan_path(
 		try_access!(action(&path, &name));
 		for entry in contents {
 			let entry_path = entry.path().to_path_buf();
-			scan_path(output_file_id, entry_path, name.join(entry.file_name()), failed_access, action)?;
+			scan_path(output_file_id, entry_path, name.join(entry.file_name()), failed_access, action);
 		}
 	} else {
 		if output_file_id == try_access!(path.get_id()) {
-			return Ok(());
+			return;
 		}
 		try_access!(action(&path, &name));
 	}
-	Ok(())
 }
 
 pub fn spawn_thread<W: Write + Send + 'static>(writer: W, output_file_id: FileID) -> JoinHandle<()> {
@@ -146,7 +145,7 @@ pub fn spawn_thread<W: Write + Send + 'static>(writer: W, output_file_id: FileID
 					);
 					builder.append_path_with_name(path, name)
 				})
-			}.unwrap_or_exit();
+			};
 		}
 		if config.progress_bars {
 			unsafe {
