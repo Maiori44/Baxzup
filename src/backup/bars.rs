@@ -12,7 +12,7 @@ pub struct BarsHandler {
 	pub xz_bar: ProgressBar,
 	pub status_bar: ProgressBar,
 	pub multi: MultiProgress,
-	ticker: JoinHandle<()>,
+	ticker: Option<(JoinHandle<u8>, usize)>,
 	loader: JoinHandle<()>,
 }
 
@@ -49,7 +49,7 @@ fn check_color(name: &str, color: &str) -> io::Result<()> {
 }
 
 impl BarsHandler {
-	pub fn init<R: Read>(compressor: *const XzEncoder<R>, output_file_id: FileID) -> io::Result<()> {
+	pub fn init(output_file_id: FileID) -> io::Result<()> {
 		if !*config!(progress_bars) {
 			return Ok(());
 		}
@@ -92,43 +92,12 @@ impl BarsHandler {
 		multi.add(status_bar.clone());
 		status_bar.set_message("Starting...");
 		multi.set_move_cursor(true);
-		let compressor_ptr = compressor as usize;
 		let bars_handler = Self {
 			tar_bar: tar_bar.clone(),
 			xz_bar: xz_bar.clone(),
 			status_bar: status_bar.clone(),
 			multi,
-			ticker: {
-				let xz_bar = xz_bar.clone();
-				let status_bar = status_bar.clone();
-				thread::spawn(move || {
-					let interval_duration = Duration::from_millis(166);
-					let mut counter = 0u8;
-					let mut prev_out = 0;
-					// SAFETY: this awful hack is "fine" because the compressor is dropped after the thread.
-					let compressor = unsafe { &*(compressor_ptr as *mut XzEncoder<R>) };
-					loop {
-						xz_bar.set_position(compressor.total_in());
-						if prev_out < compressor.total_out() {
-							status_bar.set_message(format!(
-								"Writing {} compressed bytes",
-								(compressor.total_out() - prev_out).to_string().cyan().bold()
-							));
-							prev_out = compressor.total_out();
-						}
-						counter = counter.wrapping_add(1);
-						if counter & 16 == 0 {
-							xz_bar.suspend(|| {
-								BarsHandler::redo_terminal();
-							});
-						}
-						thread::sleep(interval_duration);
-						if xz_bar.is_finished() {
-							break;
-						}
-					}
-				})
-			},
+			ticker: None,
 			loader: thread::spawn(move || {
 				let config = config!();
 				for path_ref in &config.paths {
@@ -172,6 +141,63 @@ impl BarsHandler {
 		Ok(())
 	}
 
+	pub fn set_ticker<R: Read>(compressor: *const XzEncoder<R>) {
+		if let Some(bars_handler) = BARS_HANDLER.write().unwrap().get_mut() {
+			let mut counter = if let Some((old_ticker, finished)) = bars_handler.ticker.take() {
+				// SAFETY: finished is only dropped after the ticker thread ends
+				unsafe { *(finished as *mut bool) = true }
+				old_ticker.join().unwrap()
+			} else {
+				0
+			};
+			let xz_bar = bars_handler.xz_bar.clone();
+			let status_bar = bars_handler.status_bar.clone();
+			let compressor_ptr = compressor as usize;
+			let mut finished = false;
+			let finished_ptr = &mut finished as *mut bool as usize;
+			bars_handler.ticker = Some((thread::spawn(move || {
+				let interval_duration = Duration::from_millis(166);
+				let mut prev_out = 0;
+				// SAFETY: this awful hack is "fine" because the compressor is dropped after the thread.
+				let compressor = unsafe { &*(compressor_ptr as *const XzEncoder<R>) };
+				loop {
+					xz_bar.set_position(compressor.total_in());
+					if prev_out < compressor.total_out() {
+						status_bar.set_message(format!(
+							"Writing {} compressed bytes",
+							(compressor.total_out() - prev_out).to_string().cyan().bold()
+						));
+						prev_out = compressor.total_out();
+					}
+					counter = counter.wrapping_add(1);
+					if counter & 16 == 0 {
+						xz_bar.suspend(|| {
+							BarsHandler::redo_terminal();
+						});
+					}
+					thread::sleep(interval_duration);
+					if finished {
+						break counter;
+					}
+				}
+			}), finished_ptr));
+		}
+	}
+
+	pub fn reset_ticker() {
+		if let Some(bars_handler) = BARS_HANDLER.write().unwrap().get_mut() {
+			if let Some((ticker, finished)) = bars_handler.ticker.take() {
+				if ticker.thread().id() != thread::current().id() {
+					// SAFETY: finished is only dropped after the ticker thread ends
+					unsafe { *(finished as *mut bool) = true }
+					bars_handler.status_bar.set_message("yo?");
+					ticker.join().unwrap();
+					bars_handler.status_bar.set_message("yo");
+				}
+			}
+		}
+	}
+
 	/// SAFETY: the caller must make sure `BARS_HANDLER` containts a value by checking `Config.progress_bars`
 	pub unsafe fn exec<T>(f: impl FnOnce(&BarsHandler) -> T) -> T {
 		let bars_handler = BARS_HANDLER.read().unwrap();
@@ -182,11 +208,8 @@ impl BarsHandler {
 	pub fn end(f: impl FnOnce(&BarsHandler)) {
 		if let Some(bars_handler) = BARS_HANDLER.write().unwrap().take() {
 			f(&bars_handler);
-			let thread_id = thread::current().id();
-			if bars_handler.ticker.thread().id() != thread_id {
-				bars_handler.ticker.join().unwrap();
-			}
-			if bars_handler.loader.thread().id() != thread_id {
+			BarsHandler::reset_ticker();
+			if bars_handler.loader.thread().id() != thread::current().id() {
 				bars_handler.loader.join().unwrap();
 			}
 		}

@@ -88,9 +88,92 @@ pub fn scan_path(
 	}
 }
 
-pub fn spawn_thread<W: Write + Send + 'static>(writer: W, output_file_id: FileID) -> JoinHandle<()> {
+fn archive<'a, W: Write + Send + 'static>(
+	writer: &mut W,
+	output_file_id: FileID,
+	paths: impl Iterator<Item = &'a PathBuf>,
+) {
+	let mut builder = Builder::new(writer);
+	for path_ref in paths {
+		let path = path_ref.canonicalize().unwrap_or_exit();
+		#[cfg(windows)]
+		let name = match path.file_name() {
+			Some(name) => Path::new(name).to_path_buf(),
+			None => {
+				use regex::Regex;
+				let path_str = path.to_string_lossy();
+				let drive = Regex::new(r"[A-Z]:")
+					.unwrap()
+					.find(&path_str)
+					.unwrap()
+					.as_str();
+				let mut result = String::with_capacity(8);
+				result.push_str("drive ");
+				result.push_str(drive);
+				Path::new(&result).to_path_buf()
+			}
+		};
+		#[cfg(unix)]
+		let name = Path::new(
+			path.file_name().unwrap_or_else(|| std::ffi::OsStr::new("root"))
+		).to_path_buf();
+		if *config!(progress_bars) {
+			scan_path(output_file_id, path, name, &|path, e| {
+				unsafe {
+					BarsHandler::exec(|bars_handler| bars_handler.multi.suspend(|| {
+						let ignore = failed_access(path, e);
+						BarsHandler::redo_terminal();
+						ignore
+					}))
+				}
+			}, &mut |path, name| {
+				unsafe {
+					BarsHandler::exec(|bars_handler| {
+						bars_handler.tar_bar.inc(1);
+						bars_handler.status_bar.set_message(format!(
+							"Archiving `{}`",
+							path.display().to_string().cyan().bold()
+						));
+					});
+				}
+				builder.append_path_with_name(path, name)
+			})
+		} else {
+			scan_path(output_file_id, path, name, &failed_access, &mut |path, name| {
+				println!(
+					"Archiving `{}`",
+					path.display().to_string().cyan().bold()
+				);
+				builder.append_path_with_name(path, name)
+			})
+		};
+	}
+	builder.finish().unwrap_or_exit();
+}
+
+pub fn spawn_thread<W: Write + Send + 'static>(
+	mut writer: W,
+	output_file_id: FileID
+) -> JoinHandle<()> {
 	thread::spawn(move || {
 		let config = config!();
+		if true {
+			archive(&mut writer, output_file_id, config.paths.iter())
+		} else {
+			todo!()
+		}
+		if config.progress_bars {
+			unsafe {
+				BarsHandler::exec(|bars_handler| {
+					bars_handler.status_bar.inc(1);
+					bars_handler.status_bar.set_message("Finished archiving");
+					bars_handler.tar_bar.finish_with_message("Archived ".green().bold().to_string());
+				})
+			}
+		} else {
+			println!("Finished archiving...");
+		}
+		/*let config = config!();
 		let mut builder = Builder::new(writer);
 		builder.follow_symlinks(config.follow_symlinks);
 		for path_ref in &config.paths {
@@ -158,6 +241,6 @@ pub fn spawn_thread<W: Write + Send + 'static>(writer: W, output_file_id: FileID
 		} else {
 			println!("Finished archiving...");
 		}
-		builder.finish().unwrap_or_exit();
+		builder.finish().unwrap_or_exit();*/
 	})
 }
