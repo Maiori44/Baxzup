@@ -12,7 +12,7 @@ pub struct BarsHandler {
 	pub xz_bar: ProgressBar,
 	pub status_bar: ProgressBar,
 	pub multi: MultiProgress,
-	ticker: Option<(JoinHandle<u8>, usize)>,
+	ticker: Option<JoinHandle<u8>>,
 	loader: JoinHandle<()>,
 }
 
@@ -102,7 +102,7 @@ impl BarsHandler {
 				let config = config!();
 				for path_ref in &config.paths {
 					if let Ok(path) = path_ref.canonicalize() {
-						let _ = scan_path(
+						scan_path(
 							output_file_id,
 							path,
 							PathBuf::new(),
@@ -143,9 +143,7 @@ impl BarsHandler {
 
 	pub fn set_ticker<R: Read>(compressor: *const XzEncoder<R>) {
 		if let Some(bars_handler) = BARS_HANDLER.write().unwrap().get_mut() {
-			let mut counter = if let Some((old_ticker, finished)) = bars_handler.ticker.take() {
-				// SAFETY: finished is only dropped after the ticker thread ends
-				unsafe { *(finished as *mut bool) = true }
+			let mut counter = if let Some(old_ticker) = bars_handler.ticker.take() {
 				old_ticker.join().unwrap()
 			} else {
 				0
@@ -153,9 +151,7 @@ impl BarsHandler {
 			let xz_bar = bars_handler.xz_bar.clone();
 			let status_bar = bars_handler.status_bar.clone();
 			let compressor_ptr = compressor as usize;
-			let mut finished = false;
-			let finished_ptr = &mut finished as *mut bool as usize;
-			bars_handler.ticker = Some((thread::spawn(move || {
+			bars_handler.ticker = Some(thread::spawn(move || {
 				let interval_duration = Duration::from_millis(166);
 				let mut prev_out = 0;
 				// SAFETY: this awful hack is "fine" because the compressor is dropped after the thread.
@@ -176,25 +172,11 @@ impl BarsHandler {
 						});
 					}
 					thread::sleep(interval_duration);
-					if finished {
+					if xz_bar.is_finished() {
 						break counter;
 					}
 				}
-			}), finished_ptr));
-		}
-	}
-
-	pub fn reset_ticker() {
-		if let Some(bars_handler) = BARS_HANDLER.write().unwrap().get_mut() {
-			if let Some((ticker, finished)) = bars_handler.ticker.take() {
-				if ticker.thread().id() != thread::current().id() {
-					// SAFETY: finished is only dropped after the ticker thread ends
-					unsafe { *(finished as *mut bool) = true }
-					bars_handler.status_bar.set_message("yo?");
-					ticker.join().unwrap();
-					bars_handler.status_bar.set_message("yo");
-				}
-			}
+			}));
 		}
 	}
 
@@ -206,10 +188,18 @@ impl BarsHandler {
 	}
 
 	pub fn end(f: impl FnOnce(&BarsHandler)) {
-		if let Some(bars_handler) = BARS_HANDLER.write().unwrap().take() {
+		if let Some(mut bars_handler) = BARS_HANDLER.write().unwrap().take() {
 			f(&bars_handler);
-			BarsHandler::reset_ticker();
-			if bars_handler.loader.thread().id() != thread::current().id() {
+			let thread_id = thread::current().id();
+			if let Some(ticker) = bars_handler.ticker.take() {
+				if ticker.thread().id() != thread::current().id() {
+					if !bars_handler.xz_bar.is_finished() {
+						bars_handler.xz_bar.abandon();
+					}
+					ticker.join().unwrap();
+				}
+			}
+			if bars_handler.loader.thread().id() != thread_id {
 				bars_handler.loader.join().unwrap();
 			}
 		}

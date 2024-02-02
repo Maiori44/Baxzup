@@ -2,7 +2,8 @@ use fs_id::GetID;
 use xz2::{read::XzEncoder, stream::MtStreamBuilder};
 use crate::{config::{config, assert_config}, error::ResultExt, input};
 use self::bars::BarsHandler;
-use std::{fs::{self, File}, io::{self, Write, Read}, path::Path, process, thread};
+use std::{fs::{self, File}, io::{self, Write}, path::Path, sync::OnceLock, process, thread};
+use os_pipe::PipeReader;
 use colored::Colorize;
 
 pub mod bars;
@@ -24,29 +25,34 @@ impl<W: Write> Write for WriterObserver<W> {
 	}
 }
 
-pub fn compress<'a, R>(output_file: &mut File, reader: &'a R) -> io::Result<()> where &'a R: Read {
+pub fn compress(output_file: &mut File, reader: PipeReader) -> io::Result<()> {
 	let config = config!();
 	assert_config!(
 		config.level > 9,
 		"`{}` cannot exceed 9",
 		"xz.level".yellow().bold()
 	);
-	let mut compressor = XzEncoder::new_stream(
-		reader,
-		MtStreamBuilder::new()
-			.preset(config.level)
-			.threads(if config.threads == 0 {
-				thread::available_parallelism()?.get() as u32
-			} else {
-				config.threads
-			})
-			.block_size(config.block_size)
-			.encoder()
-			.to_io_result()?
-	);
-	BarsHandler::set_ticker(&mut compressor);
-	io::copy(&mut compressor, output_file)?;
-	BarsHandler::reset_ticker();
+	static mut COMPRESSOR: OnceLock<XzEncoder<PipeReader>> = OnceLock::new();
+	// SAFETY: Only one thread has access to COMPRESSOR
+	let compressor = unsafe {
+		COMPRESSOR.take();
+		COMPRESSOR.set(XzEncoder::new_stream(
+			reader,
+			MtStreamBuilder::new()
+				.preset(config.level)
+				.threads(if config.threads == 0 {
+					thread::available_parallelism()?.get() as u32
+				} else {
+					config.threads
+				})
+				.block_size(config.block_size)
+				.encoder()
+				.to_io_result()?
+		)).unwrap_unchecked();
+		COMPRESSOR.get_mut().unwrap_unchecked()
+	};
+	BarsHandler::set_ticker(compressor);
+	io::copy(compressor, output_file)?;
 	Ok(())
 }
 
@@ -82,7 +88,7 @@ pub fn init() -> io::Result<()> {
 	BarsHandler::init(output_file_id)?;
 	let tar_thread = tar::spawn_thread(writer, output_file_id);
 	if true {
-		compress(&mut output_file, &reader)?;
+		compress(&mut output_file, reader)?;
 	} else {
 		todo!()
 	}
