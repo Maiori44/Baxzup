@@ -31,7 +31,7 @@ fn scan_path_internal(
 	output_file_id: FileID,
 	path: PathBuf,
 	name: PathBuf,
-	failed_access: &impl Fn(&Path, &io::Error) -> bool,
+	failed_access: fn(&Path, &io::Error) -> bool,
 	action: &mut impl FnMut(&PathBuf, &PathBuf) -> io::Result<()>,
 ) {
 	macro_rules! try_access {
@@ -89,7 +89,7 @@ pub fn scan_path(
 	output_file_id: FileID,
 	path: PathBuf,
 	name: PathBuf,
-	failed_access: &impl Fn(&Path, &io::Error) -> bool,
+	failed_access: fn(&Path, &io::Error) -> bool,
 	action: &mut impl FnMut(&PathBuf, &PathBuf) -> io::Result<()>,
 ) {
 	for pattern in config!(exclude) {
@@ -130,7 +130,7 @@ fn archive<'a, W: Write + Send + 'static>(
 			path.file_name().unwrap_or_else(|| std::ffi::OsStr::new("root"))
 		).to_path_buf();
 		if *config!(progress_bars) {
-			scan_path(output_file_id, path, name, &|path, e| {
+			scan_path(output_file_id, path, name, |path, e| {
 				unsafe {
 					BarsHandler::exec(|bars_handler| bars_handler.multi.suspend(|| {
 						let ignore = failed_access(path, e);
@@ -151,7 +151,7 @@ fn archive<'a, W: Write + Send + 'static>(
 				builder.append_path_with_name(path, name)
 			})
 		} else {
-			scan_path(output_file_id, path, name, &failed_access, &mut |path, name| {
+			scan_path(output_file_id, path, name, failed_access, &mut |path, name| {
 				println!(
 					"Archiving `{}`",
 					path.display().to_string().cyan().bold()

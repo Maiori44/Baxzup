@@ -106,7 +106,7 @@ impl BarsHandler {
 							output_file_id,
 							path,
 							PathBuf::new(),
-							&|_, _| true,
+							|_, _| true,
 							&mut |path, _| {
 								let mut updated_bars = 0;
 								if !xz_bar.is_finished() {
