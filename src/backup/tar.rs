@@ -27,20 +27,13 @@ fn failed_access(path: &Path, e: &io::Error) -> bool {
 	})
 }
 
-pub fn scan_path(
+fn scan_path_internal(
 	output_file_id: FileID,
 	path: PathBuf,
 	name: PathBuf,
 	failed_access: &impl Fn(&Path, &io::Error) -> bool,
 	action: &mut impl FnMut(&PathBuf, &PathBuf) -> io::Result<()>,
 ) {
-	let config = config!();
-	for pattern in &config.exclude {
-		if pattern.is_match(path.as_os_str().as_encoded_bytes()) {
-			return;
-		}
-	}
-
 	macro_rules! try_access {
 		($f:expr) => {
 			loop {
@@ -53,6 +46,7 @@ pub fn scan_path(
 		};
 	}
 
+	let config = config!();
 	let meta = try_access!(if config.follow_symlinks {
 		path.metadata()
 	} else {
@@ -60,6 +54,7 @@ pub fn scan_path(
 	});
 	if meta.is_dir() && (config.follow_symlinks || !meta.is_symlink()) {
 		let mut contents = Vec::new();
+		let mut keep_tag = false;
 		for entry in try_access!(path.read_dir()) {
 			let entry = try_access!(entry);
 			if let Some(mode) = config.exclude_tags.get(&entry.file_name()).copied() {
@@ -68,6 +63,7 @@ pub fn scan_path(
 				} else {
 					contents.clear();
 					if mode == TagKeepMode::Tag {
+						keep_tag = true;
 						contents.push(entry);
 					}
 				}
@@ -76,9 +72,10 @@ pub fn scan_path(
 			contents.push(entry);
 		}
 		try_access!(action(&path, &name));
+		let scan_func = if keep_tag { scan_path_internal } else { scan_path };
 		for entry in contents {
 			let entry_path = entry.path().to_path_buf();
-			scan_path(output_file_id, entry_path, name.join(entry.file_name()), failed_access, action);
+			scan_func(output_file_id, entry_path, name.join(entry.file_name()), failed_access, action);
 		}
 	} else {
 		if output_file_id == try_access!(path.get_id()) {
@@ -86,6 +83,21 @@ pub fn scan_path(
 		}
 		try_access!(action(&path, &name));
 	}
+}
+
+pub fn scan_path(
+	output_file_id: FileID,
+	path: PathBuf,
+	name: PathBuf,
+	failed_access: &impl Fn(&Path, &io::Error) -> bool,
+	action: &mut impl FnMut(&PathBuf, &PathBuf) -> io::Result<()>,
+) {
+	for pattern in config!(exclude) {
+		if pattern.is_match(path.as_os_str().as_encoded_bytes()) {
+			return;
+		}
+	}
+	scan_path_internal(output_file_id, path, name, failed_access, action)
 }
 
 fn archive<'a, W: Write + Send + 'static>(
