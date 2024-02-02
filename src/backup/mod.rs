@@ -50,15 +50,17 @@ pub fn compress(output_file: &mut File, reader: PipeReader) -> io::Result<()> {
 		io::copy(
 			// SAFETY: Only one thread has access to COMPRESSOR
 			unsafe {
-				BarsHandler::set_ticker(&mut compressor);
-				COMPRESSOR.take();
+				let prev = COMPRESSOR.take();
 				COMPRESSOR.set(compressor).unwrap_unchecked();
-				COMPRESSOR.get_mut().unwrap_unchecked()
+				let compressor = COMPRESSOR.get_mut().unwrap_unchecked();
+				BarsHandler::set_ticker(compressor);
+				drop(prev);
+				compressor
 			},
 			output_file
 		)?;
 	} else {
-		io::copy(&mut compressor, output_file)?;
+		io::copy(&mut compressor, &mut WriterObserver(output_file))?;
 	}
 	Ok(())
 }
