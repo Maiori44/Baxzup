@@ -141,43 +141,49 @@ impl BarsHandler {
 		Ok(())
 	}
 
-	pub fn set_ticker<R: Read>(compressor: *const XzEncoder<R>) {
-		if let Some(bars_handler) = BARS_HANDLER.write().unwrap().get_mut() {
-			let mut counter = if let Some(old_ticker) = bars_handler.ticker.take() {
-				old_ticker.join().unwrap()
-			} else {
-				0
-			};
-			let xz_bar = bars_handler.xz_bar.clone();
-			let status_bar = bars_handler.status_bar.clone();
-			let compressor_ptr = compressor as usize;
-			bars_handler.ticker = Some(thread::spawn(move || {
-				let interval_duration = Duration::from_millis(166);
-				let mut prev_out = 0;
-				// SAFETY: this awful hack is "fine" because the compressor is dropped after the thread.
-				let compressor = unsafe { &*(compressor_ptr as *const XzEncoder<R>) };
-				loop {
-					xz_bar.set_position(compressor.total_in());
-					if prev_out < compressor.total_out() {
-						status_bar.set_message(format!(
-							"Writing {} compressed bytes",
-							(compressor.total_out() - prev_out).to_string().cyan().bold()
-						));
-						prev_out = compressor.total_out();
-					}
-					counter = counter.wrapping_add(1);
-					if counter & 16 == 0 {
-						xz_bar.suspend(|| {
-							BarsHandler::redo_terminal();
-						});
-					}
-					thread::sleep(interval_duration);
-					if xz_bar.is_finished() {
-						break counter;
-					}
+	/// SAFETY: the caller must make sure `BARS_HANDLER` containts a value by checking `Config.progress_bars`
+	pub unsafe fn set_ticker<R: Read>(compressor: *const XzEncoder<R>) {
+		static mut FINISH: bool = false;
+		let mut bars_handler = BARS_HANDLER.write().unwrap();
+		debug_assert!(bars_handler.get_mut().is_some());
+		let bars_handler = bars_handler.get_mut().unwrap_unchecked();
+		let mut counter = if let Some(old_ticker) = bars_handler.ticker.take() {
+			FINISH = true;
+			let counter = old_ticker.join().unwrap();
+			FINISH = false;
+			counter
+		} else {
+			0
+		};
+		let xz_bar = bars_handler.xz_bar.clone();
+		let status_bar = bars_handler.status_bar.clone();
+		let compressor_ptr = compressor as usize;
+		bars_handler.ticker = Some(thread::spawn(move || {
+			let interval_duration = Duration::from_millis(166);
+			let mut prev_out = 0;
+			// SAFETY: this awful hack is "fine" because the compressor is dropped after the thread ends.
+			let compressor = unsafe { &*(compressor_ptr as *const XzEncoder<R>) };
+			loop {
+				xz_bar.set_position(compressor.total_in());
+				if prev_out < compressor.total_out() {
+					status_bar.set_message(format!(
+						"Writing {} compressed bytes",
+						(compressor.total_out() - prev_out).to_string().cyan().bold()
+					));
+					prev_out = compressor.total_out();
 				}
-			}));
-		}
+				counter = counter.wrapping_add(1);
+				if counter & 16 == 0 {
+					xz_bar.suspend(|| {
+						BarsHandler::redo_terminal();
+					});
+				}
+				thread::sleep(interval_duration);
+				if FINISH || xz_bar.is_finished() {
+					break counter;
+				}
+			}
+		}));
 	}
 
 	/// SAFETY: the caller must make sure `BARS_HANDLER` containts a value by checking `Config.progress_bars`

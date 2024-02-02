@@ -32,27 +32,34 @@ pub fn compress(output_file: &mut File, reader: PipeReader) -> io::Result<()> {
 		"`{}` cannot exceed 9",
 		"xz.level".yellow().bold()
 	);
-	static mut COMPRESSOR: OnceLock<XzEncoder<PipeReader>> = OnceLock::new();
-	// SAFETY: Only one thread has access to COMPRESSOR
-	let compressor = unsafe {
-		COMPRESSOR.take();
-		COMPRESSOR.set(XzEncoder::new_stream(
-			reader,
-			MtStreamBuilder::new()
-				.preset(config.level)
-				.threads(if config.threads == 0 {
-					thread::available_parallelism()?.get() as u32
-				} else {
-					config.threads
-				})
-				.block_size(config.block_size)
-				.encoder()
-				.to_io_result()?
-		)).unwrap_unchecked();
-		COMPRESSOR.get_mut().unwrap_unchecked()
-	};
-	BarsHandler::set_ticker(compressor);
-	io::copy(compressor, output_file)?;
+	let mut compressor = XzEncoder::new_stream(
+		reader,
+		MtStreamBuilder::new()
+			.preset(config.level)
+			.threads(if config.threads == 0 {
+				thread::available_parallelism()?.get() as u32
+			} else {
+				config.threads
+			})
+			.block_size(config.block_size)
+			.encoder()
+			.to_io_result()?
+	);
+	if config.progress_bars {
+		static mut COMPRESSOR: OnceLock<XzEncoder<PipeReader>> = OnceLock::new();
+		io::copy(
+			// SAFETY: Only one thread has access to COMPRESSOR
+			unsafe {
+				BarsHandler::set_ticker(&mut compressor);
+				COMPRESSOR.take();
+				COMPRESSOR.set(compressor).unwrap_unchecked();
+				COMPRESSOR.get_mut().unwrap_unchecked()
+			},
+			output_file
+		)?;
+	} else {
+		io::copy(&mut compressor, output_file)?;
+	}
 	Ok(())
 }
 
