@@ -106,6 +106,7 @@ fn archive<'a, W: Write + Send + 'static>(
 	paths: impl Iterator<Item = &'a PathBuf>,
 ) {
 	let mut builder = Builder::new(writer);
+	builder.follow_symlinks(*config!(follow_symlinks));
 	for path_ref in paths {
 		let path = path_ref.canonicalize().unwrap_or_exit();
 		#[cfg(windows)]
