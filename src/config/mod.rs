@@ -1,16 +1,18 @@
 use std::{
+	collections::HashMap,
+	error::Error,
+	ffi::OsString,
+	fmt::Debug,
 	hint::unreachable_unchecked,
+	ops::Deref,
 	path::PathBuf,
 	process,
-	sync::{OnceLock, Mutex},
-	error::Error,
 	str::FromStr,
-	fmt::Debug,
-	collections::HashMap,
-	ffi::OsString,
+	sync::Mutex,
 	env,
 	fs,
 	io,
+	ptr,
 };
 use chrono::{Local, format::{DelayedFormat, Item, StrftimeItems}};
 use clap::{
@@ -46,10 +48,8 @@ macro_rules! config {
 	() => {
 		//SAFETY: The configuration will always be initialized by the time this macro is used.
 		unsafe {
-			use crate::config::CONFIG;
-			let config = CONFIG.get();
-			debug_assert!(config.is_some());
-			config.unwrap_unchecked()
+			use std::ops::Deref;
+			crate::config::CONFIG.deref()
 		}
 	};
 	($field:ident) => {
@@ -262,7 +262,19 @@ pub struct Config {
 	pub block_size: u64,
 }
 
-pub static CONFIG: OnceLock<Config> = OnceLock::new();
+pub struct StaticConfig(*const Config);
+
+impl Deref for StaticConfig {
+	type Target = Config;
+
+	fn deref(&self) -> &Self::Target {
+		debug_assert!(!self.0.is_null());
+		// SAFETY: The configuration will always be initialized by the time this macro is used.
+		unsafe { &*self.0 }
+	}
+}
+
+pub static mut CONFIG: StaticConfig = StaticConfig(ptr::null());
 
 fn parse_excluded_tag((name, mode): (&String, &Value)) -> Result<(OsString, TagKeepMode), String> {
 	Ok((OsString::from(name), map!(
@@ -528,7 +540,7 @@ Create backup using default configuration? [{}/{}]",
 			}
 		)?;
 	}
-	let mut config = Config {
+	let mut config = Box::new(Config {
 		paths: parse_config_field!(cli.paths || config.backup.paths -> map!(
 			Array,
 			"paths must be strings",
@@ -596,7 +608,7 @@ Create backup using default configuration? [{}/{}]",
 		level: parse_config_field!(cli.level || config.xz.level -> u32),
 		threads: parse_config_field!(cli.threads || config.xz.threads -> u32),
 		block_size: parse_config_field!(cli.block_size || config.xz.block_size [default: 0] -> u64),
-	};
+	});
 	config.paths.extend(cli.add_paths);
 	config.exclude.extend(
 		cli.add_exclude
@@ -618,7 +630,8 @@ Create backup using default configuration? [{}/{}]",
 					.map(|tag| (tag, TagKeepMode::None))
 			)
 	);
-	CONFIG.set(config).unwrap();
+	// SAFETY: There is only one thread running for now
+	unsafe { CONFIG.0 = Box::leak(config) }
 	println!(
 		"{}{} configuration! (`{config_path_str}`)",
 		if *config!(progress_bars) {
