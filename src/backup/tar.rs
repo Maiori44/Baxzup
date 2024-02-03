@@ -1,6 +1,6 @@
 use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}};
 use crate::{config::{TagKeepMode, config}, error::ResultExt, input};
-use super::bars::BarsHandler;
+use super::{bars::BarsHandler, metadata};
 use colored::Colorize;
 use fs_id::{FileID, GetID};
 use tar::Builder;
@@ -47,11 +47,7 @@ fn scan_path_internal(
 	}
 
 	let config = config!();
-	let meta = try_access!(if config.follow_symlinks {
-		path.metadata()
-	} else {
-		path.symlink_metadata()
-	});
+	let meta = try_access!(metadata(&path));
 	if meta.is_dir() && (config.follow_symlinks || !meta.is_symlink()) {
 		let mut contents = Vec::new();
 		let mut keep_tag = false;

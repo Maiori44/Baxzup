@@ -2,7 +2,7 @@ use std::{thread::{JoinHandle, self}, time::Duration, io::{Read, self, Write}, s
 use fs_id::FileID;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use crate::config::{assert_config, config};
-use super::tar::scan_path;
+use super::{metadata, tar::scan_path};
 use xz2::read::XzEncoder;
 use colored::Colorize;
 
@@ -110,11 +110,7 @@ impl BarsHandler {
 							&mut |path, _| {
 								let mut updated_bars = 0;
 								if !xz_bar.is_finished() {
-									if let Ok(meta) = if config.follow_symlinks {
-										path.metadata()
-									} else {
-										path.symlink_metadata()
-									} {
+									if let Ok(meta) = metadata(path) {
 										xz_bar.inc_length(meta.len());
 									}
 									updated_bars += 1;

@@ -2,7 +2,7 @@ use fs_id::GetID;
 use xz2::{read::XzEncoder, stream::MtStreamBuilder};
 use crate::{config::{config, assert_config}, error::ResultExt, input};
 use self::bars::BarsHandler;
-use std::{fs::{self, File}, io::{self, Write}, path::Path, sync::OnceLock, process, thread};
+use std::{fs::{self, File, Metadata}, io::{self, Write}, path::Path, sync::OnceLock, process, thread};
 use os_pipe::PipeReader;
 use colored::Colorize;
 
@@ -25,7 +25,15 @@ impl<W: Write> Write for WriterObserver<W> {
 	}
 }
 
-pub fn compress(output_file: &mut File, reader: PipeReader) -> io::Result<()> {
+pub fn metadata(path: impl AsRef<Path>) -> io::Result<Metadata> {
+	if *config!(follow_symlinks) {
+		path.as_ref().metadata()
+	} else {
+		path.as_ref().symlink_metadata()
+	}
+}
+
+fn compress(output_file: &mut File, reader: PipeReader) -> io::Result<()> {
 	let config = config!();
 	assert_config!(
 		config.level > 9,
