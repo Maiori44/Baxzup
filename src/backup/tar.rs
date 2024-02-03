@@ -170,10 +170,10 @@ pub fn spawn_thread<W: Write + Send + 'static>(
 ) -> JoinHandle<()> {
 	thread::spawn(move || {
 		let config = config!();
-		if true {
-			archive(&mut writer, output_file_id, config.paths.iter())
-		} else {
+		if config.use_multiple_subarchives {
 			todo!()
+		} else {
+			archive(&mut writer, output_file_id, config.paths.iter())
 		}
 		if config.progress_bars {
 			unsafe {

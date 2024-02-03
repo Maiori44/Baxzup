@@ -170,6 +170,10 @@ struct Cli {
 	#[arg(short, long, value_name = "FORCE", default_missing_value = "true", num_args = 0..=1)]
 	force_overwrite: Option<bool>,
 
+	/// Create an uncompressed archive containing compressed subarchives [default: use configuration]
+	#[arg(short = 'm', long, value_name = "ENABLE", default_missing_value = "true", num_args = 0..=1)]
+	use_multiple_subarchives: Option<bool>,
+
 	/// Name (or path) of the backup file [default: use configuration]
 	#[arg(short, long)]
 	name: Option<String>,
@@ -246,6 +250,7 @@ pub struct Config {
 	pub follow_symlinks: bool,
 	pub ignore_unreadable_files: Mutex<bool>,
 	pub force_overwrite: bool,
+	pub use_multiple_subarchives: bool,
 	pub name: String,
 	pub progress_bars: bool,
 	pub spinner_chars: String,
@@ -560,6 +565,10 @@ Create backup using default configuration? [{}/{}]",
 		force_overwrite: parse_config_field!(
 			cli.force_overwrite
 			|| config.backup.force_overwrite [default: false] -> bool
+		),
+		use_multiple_subarchives: parse_config_field!(
+			cli.use_multiple_subarchives
+			|| config.backup.use_multiple_subarchives [default: false] -> bool
 		),
 		name: Regex::new(r"%(![a-z]+)?([^% ]*)?")?.replace_all(
 			&parse_config_field!(cli.name || config.backup.name -> String),

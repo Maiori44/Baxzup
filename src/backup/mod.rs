@@ -96,10 +96,10 @@ pub fn init() -> io::Result<()> {
 	let output_file_id = output_file.get_id()?;
 	BarsHandler::init(output_file_id)?;
 	let tar_thread = tar::spawn_thread(writer, output_file_id);
-	if true {
-		compress(&mut output_file, reader)?;
-	} else {
+	if config.use_multiple_subarchives {
 		todo!()
+	} else {
+		compress(&mut output_file, reader)?;
 	}
 	BarsHandler::end(|bars_handler| {
 		bars_handler.status_bar.inc(1);

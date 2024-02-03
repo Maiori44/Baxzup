@@ -15,12 +15,12 @@ mod macos;
 use macos as specifics;
 
 #[cfg(not(any(
-	target_os = "windows",
+	windows,
 	target_os = "macos",
 )))]
 mod linux;
 #[cfg(not(any(
-	target_os = "windows",
+	windows,
 	target_os = "macos",
 )))]
 use linux as specifics;
@@ -38,6 +38,7 @@ pub fn get() -> Table {
 		follow_symlinks = false
 		ignore_unreadable_files = false
 		force_overwrite = false
+		use_multiple_subarchives = false
 		name = "%!hostname (%F).tar.xz"
 
 		[progress_bars]
