@@ -67,7 +67,6 @@ pub fn compress(output_file: &mut File, reader: PipeReader) -> io::Result<()> {
 
 pub fn init() -> io::Result<()> {
 	let config = config!();
-	let (reader, writer) = os_pipe::pipe()?;
 	let path_name = Path::new(&config.name);
 	let mut output_file = if config.force_overwrite {
 		File::create(path_name)?
@@ -95,12 +94,15 @@ pub fn init() -> io::Result<()> {
 	}
 	let output_file_id = output_file.get_id()?;
 	BarsHandler::init(output_file_id)?;
-	let tar_thread = tar::spawn_thread(writer, output_file_id);
-	if config.use_multiple_subarchives {
-		todo!()
+	let tar_thread = if config.use_multiple_subarchives {
+		let tar_thread = tar::spawn_thread(output_file, output_file_id);
+		tar_thread
 	} else {
+		let (reader, writer) = os_pipe::pipe()?;
+		let tar_thread = tar::spawn_thread(writer, output_file_id);
 		compress(&mut output_file, reader)?;
-	}
+		tar_thread
+	};
 	BarsHandler::end(|bars_handler| {
 		bars_handler.status_bar.inc(1);
 		bars_handler.status_bar.finish_with_message(format!(
