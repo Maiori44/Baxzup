@@ -108,29 +108,26 @@ impl BarsHandler {
 							PathBuf::new(),
 							|_, _| true,
 							&mut |path, _| {
-								let mut updated_bars = 0;
 								if !xz_bar.is_finished() {
 									if let Ok(meta) = metadata(path) {
 										xz_bar.inc_length(meta.len());
 									}
-									updated_bars += 1;
 								}
 								if !tar_bar.is_finished() {
 									tar_bar.inc_length(1);
-									updated_bars += 1;
 								}
-								if updated_bars == 0 {
-									Err(io::Error::other(""))
-								} else {
-									Ok(())
-								}
+								Ok(())
 							}
 						);
 					}
 				}
-				xz_bar.inc_length(xz_bar.length().unwrap() / 30);
-				status_bar.inc(1);
-				status_bar.set_message("Finished scanning");
+				if !xz_bar.is_finished() {
+					xz_bar.inc_length(xz_bar.length().unwrap() / 30);
+				}
+				if !status_bar.is_finished() {
+					status_bar.inc(1);
+					status_bar.set_message("Finished scanning");
+				}
 			}),
 		};
 		BARS_HANDLER.write().unwrap().set(bars_handler).unwrap();
