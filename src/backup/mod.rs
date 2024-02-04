@@ -2,26 +2,25 @@ use fs_id::GetID;
 use xz2::{read::XzEncoder, stream::MtStreamBuilder};
 use crate::{config::{config, assert_config}, error::ResultExt, input};
 use self::bars::BarsHandler;
-use std::{fs::{self, File, Metadata}, io::{self, Write}, path::Path, sync::OnceLock, process, thread};
+use std::{fs::{self, File, Metadata}, io::{self, Read}, path::Path, sync::OnceLock, process, thread};
 use os_pipe::PipeReader;
 use colored::Colorize;
 
 pub mod bars;
 mod tar;
 
-struct WriterObserver<W: Write> (W);
+struct ReaderObserver<R: Read>(R);
 
-impl<W: Write> Write for WriterObserver<W> {
-	fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-		println!(
-			"Writing {} compressed bytes",
-			buf.len().to_string().cyan().bold()
-		);
-		self.0.write(buf)
-	}
-
-	fn flush(&mut self) -> io::Result<()> {
-		self.0.flush()
+impl<R: Read> Read for ReaderObserver<R> {
+	fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+		let read = self.0.read(buf)?;
+		if read > 0 {
+			println!(
+				"Writing {} compressed bytes",
+				read.to_string().cyan().bold()
+			);
+		}
+		Ok(read)
 	}
 }
 
@@ -33,14 +32,12 @@ pub fn metadata(path: impl AsRef<Path>) -> io::Result<Metadata> {
 	}
 }
 
-fn compress(output_file: &mut File, reader: PipeReader) -> io::Result<()> {
+fn compress<T>(
+	reader: PipeReader,
+	f: impl FnOnce(&mut dyn Read) -> io::Result<T>,
+) -> io::Result<()> {
 	let config = config!();
-	assert_config!(
-		config.level > 9,
-		"`{}` cannot exceed 9",
-		"xz.level".yellow().bold()
-	);
-	let mut compressor = XzEncoder::new_stream(
+	let compressor = XzEncoder::new_stream(
 		reader,
 		MtStreamBuilder::new()
 			.preset(config.level)
@@ -55,26 +52,28 @@ fn compress(output_file: &mut File, reader: PipeReader) -> io::Result<()> {
 	);
 	if config.progress_bars {
 		static mut COMPRESSOR: OnceLock<XzEncoder<PipeReader>> = OnceLock::new();
-		io::copy(
-			// SAFETY: Only one thread has access to COMPRESSOR
-			unsafe {
-				let prev = COMPRESSOR.take();
-				COMPRESSOR.set(compressor).unwrap_unchecked();
-				let compressor = COMPRESSOR.get_mut().unwrap_unchecked();
-				BarsHandler::set_ticker(compressor);
-				drop(prev);
-				compressor
-			},
-			output_file
-		)?;
+		// SAFETY: Only one thread has access to COMPRESSOR
+		f(unsafe {
+			let prev = COMPRESSOR.take();
+			COMPRESSOR.set(compressor).unwrap_unchecked();
+			let compressor = COMPRESSOR.get_mut().unwrap_unchecked();
+			BarsHandler::set_ticker(compressor);
+			drop(prev);
+			compressor
+		})?;
 	} else {
-		io::copy(&mut compressor, &mut WriterObserver(output_file))?;
+		f(&mut ReaderObserver(compressor))?;
 	}
 	Ok(())
 }
 
 pub fn init() -> io::Result<()> {
 	let config = config!();
+	assert_config!(
+		config.level > 9,
+		"`{}` cannot exceed 9",
+		"xz.level".yellow().bold()
+	);
 	let path_name = Path::new(&config.name);
 	let mut output_file = if config.force_overwrite {
 		File::create(path_name)?
@@ -102,15 +101,18 @@ pub fn init() -> io::Result<()> {
 	}
 	let output_file_id = output_file.get_id()?;
 	BarsHandler::init(output_file_id)?;
-	let tar_thread = if config.use_multiple_subarchives {
+	if config.use_multiple_subarchives {
 		let tar_thread = tar::spawn_thread(output_file, output_file_id);
-		tar_thread
+		loop {
+			thread::park();
+			break tar_thread;
+		}
 	} else {
 		let (reader, writer) = os_pipe::pipe()?;
 		let tar_thread = tar::spawn_thread(writer, output_file_id);
-		compress(&mut output_file, reader)?;
+		compress(reader, |compressor| io::copy(compressor, &mut output_file))?;
 		tar_thread
-	};
+	}.join().unwrap();
 	BarsHandler::end(|bars_handler| {
 		bars_handler.status_bar.inc(1);
 		bars_handler.status_bar.finish_with_message(format!(
@@ -128,7 +130,6 @@ pub fn init() -> io::Result<()> {
 			config.name.cyan().bold()
 		);
 	}
-	tar_thread.join().unwrap();
 	Ok(())
 	/*let config = config!();
 	let (reader, writer) = os_pipe::pipe()?;

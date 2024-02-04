@@ -1,9 +1,26 @@
-use std::{thread::{JoinHandle, self}, io::{self, Write}, path::{PathBuf, Path}};
+use std::{io::{self, Write}, path::{Path, PathBuf}, thread::{JoinHandle, self}};
 use crate::{config::{TagKeepMode, config}, error::ResultExt, input};
 use super::{bars::BarsHandler, metadata};
 use colored::Colorize;
 use fs_id::{FileID, GetID};
 use tar::Builder;
+
+macro_rules! try_access {
+	($path:expr, $f:expr, $else:expr) => {
+		loop {
+			match $f {
+				Ok(result) => break result,
+				Err(e) if failed_access(&$path, &e) => $else,
+				_ => {}
+			}
+		}
+	};
+	($path:expr, $f:expr) => {
+		self::try_access!($path, $f, return)
+	};
+}
+
+use try_access;
 
 fn failed_access(path: &Path, e: &io::Error) -> bool {
 	let mut ignore = config!(ignore_unreadable_files).lock().unwrap();
@@ -36,13 +53,7 @@ fn scan_path_internal(
 ) {
 	macro_rules! try_access {
 		($f:expr) => {
-			loop {
-				match $f {
-					Ok(result) => break result,
-					Err(e) if failed_access(&path, &e) => return,
-					_ => {}
-				}
-			}
+			self::try_access!(path, $f)
 		};
 	}
 
@@ -96,46 +107,53 @@ pub fn scan_path(
 	scan_path_internal(output_file_id, path, name, failed_access, action)
 }
 
-fn archive<'a, W: Write + Send + 'static>(
-	writer: &mut W,
+#[cfg(windows)]
+fn get_name(path: &Path, name_start: &Option<PathBuf>) -> PathBuf {
+	let name = match path.file_name() {
+		Some(name) => Path::new(name).to_path_buf(),
+		None => {
+			use regex::Regex;
+			let path_str = path.to_string_lossy();
+			let drive = Regex::new(r"[A-Z]:")
+				.unwrap()
+				.find(&path_str)
+				.unwrap()
+				.as_str();
+			let mut result = String::with_capacity(8);
+			result.push_str("drive ");
+			result.push_str(drive);
+			Path::new(&result).to_path_buf()
+		}
+	};
+	match name_start {
+		Some(name_start) => name_start.join(name),
+		None => name,
+	}
+}
+
+#[cfg(unix)]
+fn get_name(path: &Path, name_start: &Option<PathBuf>) -> PathBuf {
+	let name = Path::new(
+		path.file_name().unwrap_or_else(|| std::ffi::OsStr::new("root"))
+	).to_path_buf();
+	match name_start {
+		Some(name_start) => name_start.join(name),
+		None => name,
+	}
+}
+
+fn archive_internal<'a, W: Write + Send + 'static>(
+	builder: &mut Builder<W>,
 	output_file_id: FileID,
 	paths: impl Iterator<Item = &'a PathBuf>,
+	name_start: &Option<PathBuf>,
+	failed_access: fn(&Path, &io::Error) -> bool,
 ) {
-	let mut builder = Builder::new(writer);
-	builder.follow_symlinks(*config!(follow_symlinks));
-	for path_ref in paths {
-		let path = path_ref.canonicalize().unwrap_or_exit();
-		#[cfg(windows)]
-		let name = match path.file_name() {
-			Some(name) => Path::new(name).to_path_buf(),
-			None => {
-				use regex::Regex;
-				let path_str = path.to_string_lossy();
-				let drive = Regex::new(r"[A-Z]:")
-					.unwrap()
-					.find(&path_str)
-					.unwrap()
-					.as_str();
-				let mut result = String::with_capacity(8);
-				result.push_str("drive ");
-				result.push_str(drive);
-				Path::new(&result).to_path_buf()
-			}
-		};
-		#[cfg(unix)]
-		let name = Path::new(
-			path.file_name().unwrap_or_else(|| std::ffi::OsStr::new("root"))
-		).to_path_buf();
+	'main: for path_ref in paths {
+		let path = try_access!(path_ref, path_ref.canonicalize(), continue 'main);
+		let name = get_name(&path, &name_start);
 		if *config!(progress_bars) {
-			scan_path(output_file_id, path, name, |path, e| {
-				unsafe {
-					BarsHandler::exec(|bars_handler| bars_handler.multi.suspend(|| {
-						let ignore = failed_access(path, e);
-						BarsHandler::redo_terminal();
-						ignore
-					}))
-				}
-			}, &mut |path, name| {
+			scan_path(output_file_id, path, name, failed_access, &mut |path, name| {
 				unsafe {
 					BarsHandler::exec(|bars_handler| {
 						bars_handler.tar_bar.inc(1);
@@ -157,19 +175,86 @@ fn archive<'a, W: Write + Send + 'static>(
 			})
 		};
 	}
+}
+
+fn archive<'a, W: Write + Send + 'static>(
+	writer: W,
+	output_file_id: FileID,
+	paths: impl Iterator<Item = &'a PathBuf>,
+	failed_access: fn(&Path, &io::Error) -> bool,
+) {
+	let mut builder = Builder::new(writer);
+	builder.follow_symlinks(*config!(follow_symlinks));
+	archive_internal(&mut builder, output_file_id, paths, &None, failed_access);
 	builder.finish().unwrap_or_exit();
 }
 
+fn make_subarchives<W: Write + Send + 'static>(
+	mut builder: Builder<W>,
+	output_file_id: FileID,
+	main_thread: thread::Thread,
+	paths: &Vec<PathBuf>,
+	name_start: Option<PathBuf>,
+	failed_access: fn(&Path, &io::Error) -> bool,
+) {
+	let mut root_files = Vec::new();
+	let mut root_dirs = Vec::with_capacity(paths.len());
+	for path_ref in paths {
+		if path_ref.is_dir() {
+			root_dirs.push(path_ref);
+		} else {
+			root_files.push(path_ref);
+		}
+	}
+	archive_internal(&mut builder, output_file_id, root_files.into_iter(), &name_start, failed_access);
+	if root_dirs.len() == 1 {
+		let path = try_access!(&paths[0], paths[0].canonicalize());
+		let mut inner_paths = Vec::new();
+		for entry in try_access!(path, path.read_dir()) {
+			inner_paths.push(try_access!(path, entry).path());
+		}
+		make_subarchives(
+			builder,
+			output_file_id,
+			main_thread,
+			&inner_paths,
+			Some(get_name(path.as_path(), &name_start)),
+			failed_access
+		);
+	} else {
+		for dir_path in root_dirs {
+			let (reader, writer) = os_pipe::pipe().unwrap_or_exit();
+			let dir_builder = Builder::new(writer);
+		}
+		main_thread.unpark();
+		builder.finish().unwrap_or_exit();
+	}
+}
+
 pub fn spawn_thread<W: Write + Send + 'static>(
-	mut writer: W,
+	writer: W,
 	output_file_id: FileID
 ) -> JoinHandle<()> {
+	let config = config!();
+	let main_thread = config.use_multiple_subarchives.then(thread::current);
 	thread::spawn(move || {
-		let config = config!();
-		if config.use_multiple_subarchives {
-			todo!()
+		let failed_access: Box<fn(&Path, &io::Error) -> bool> = if config.progress_bars {
+			Box::new(|path, e| {
+				unsafe {
+					BarsHandler::exec(|bars_handler| bars_handler.multi.suspend(|| {
+						let ignore = failed_access(path, e);
+						BarsHandler::redo_terminal();
+						ignore
+					}))
+				}
+			})
+		} else { Box::new(failed_access) };
+		if let Some(main_thread) = main_thread {
+			let mut builder = Builder::new(writer);
+			builder.follow_symlinks(*config!(follow_symlinks));
+			make_subarchives(builder, output_file_id, main_thread, &config.paths, None, *failed_access);
 		} else {
-			archive(&mut writer, output_file_id, config.paths.iter())
+			archive(writer, output_file_id, config.paths.iter(), *failed_access);
 		}
 		if config.progress_bars {
 			unsafe {
