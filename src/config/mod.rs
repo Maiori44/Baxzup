@@ -4,7 +4,6 @@ use std::{
 	ffi::OsString,
 	fmt::Debug,
 	hint::unreachable_unchecked,
-	ops::Deref,
 	path::PathBuf,
 	process,
 	str::FromStr,
@@ -12,7 +11,6 @@ use std::{
 	env,
 	fs,
 	io,
-	ptr,
 };
 use chrono::{Local, format::{DelayedFormat, Item, StrftimeItems}};
 use clap::{
@@ -28,7 +26,12 @@ use dirs::config_dir;
 use regex::{bytes, Regex, Captures};
 use sysinfo::{System, User, RefreshKind, ProcessRefreshKind, Users};
 use toml::{value::Array, Table, Value};
-use crate::{error::{self, ResultExt}, input, backup::bars::{spinner_chars, PROGRESS_BAR}};
+use crate::{
+	backup::bars::{spinner_chars, PROGRESS_BAR},
+	error::{self, ResultExt},
+	static_ptr::StaticPointer,
+	input,
+};
 
 mod default;
 
@@ -48,7 +51,6 @@ macro_rules! config {
 	() => {
 		//SAFETY: The configuration will always be initialized by the time this macro is used.
 		unsafe {
-			use std::ops::Deref;
 			crate::config::CONFIG.deref()
 		}
 	};
@@ -262,19 +264,7 @@ pub struct Config {
 	pub block_size: u64,
 }
 
-pub struct StaticConfig(*const Config);
-
-impl Deref for StaticConfig {
-	type Target = Config;
-
-	fn deref(&self) -> &Self::Target {
-		debug_assert!(!self.0.is_null());
-		// SAFETY: The configuration will always be initialized by the time this macro is used.
-		unsafe { &*self.0 }
-	}
-}
-
-pub static mut CONFIG: StaticConfig = StaticConfig(ptr::null());
+pub static mut CONFIG: StaticPointer<Config> = StaticPointer::null();
 
 fn parse_excluded_tag((name, mode): (&String, &Value)) -> Result<(OsString, TagKeepMode), String> {
 	Ok((OsString::from(name), map!(
@@ -631,7 +621,7 @@ Create backup using default configuration? [{}/{}]",
 			)
 	);
 	// SAFETY: There is only one thread running for now
-	unsafe { CONFIG.0 = Box::leak(config) }
+	unsafe { CONFIG.set(Box::leak(config)) }
 	println!(
 		"{}{} configuration! (`{config_path_str}`)",
 		if *config!(progress_bars) {

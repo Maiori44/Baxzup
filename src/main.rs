@@ -1,6 +1,7 @@
 use error::ResultExt;
 use std::panic;
 
+mod static_ptr;
 mod error;
 mod config;
 mod backup;

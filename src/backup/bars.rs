@@ -1,7 +1,7 @@
 use std::{thread::{JoinHandle, self}, time::Duration, io::{Read, self, Write}, sync::{OnceLock, RwLock}, path::PathBuf};
 use fs_id::FileID;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use crate::config::{assert_config, config};
+use crate::{config::{assert_config, config}, static_ptr::StaticPointer};
 use super::{metadata, tar::scan_path};
 use xz2::read::XzEncoder;
 use colored::Colorize;
@@ -135,7 +135,7 @@ impl BarsHandler {
 	}
 
 	/// SAFETY: the caller must make sure `BARS_HANDLER` containts a value by checking `Config.progress_bars`
-	pub unsafe fn set_ticker<R: Read>(compressor: *const XzEncoder<R>) {
+	pub unsafe fn set_ticker<R: Read + 'static>(compressor_ptr: *const XzEncoder<R>) {
 		static mut FINISH: bool = false;
 		let mut bars_handler = BARS_HANDLER.write().unwrap();
 		debug_assert!(bars_handler.get_mut().is_some());
@@ -150,12 +150,12 @@ impl BarsHandler {
 		};
 		let xz_bar = bars_handler.xz_bar.clone();
 		let status_bar = bars_handler.status_bar.clone();
-		let compressor_ptr = compressor as usize;
+		let compressor_ptr = StaticPointer::new(compressor_ptr);
 		bars_handler.ticker = Some(thread::spawn(move || {
 			let interval_duration = Duration::from_millis(166);
 			let mut prev_out = 0;
-			// SAFETY: this awful hack is "fine" because the compressor is dropped after the thread ends.
-			let compressor = unsafe { &*(compressor_ptr as *const XzEncoder<R>) };
+			// SAFETY: The compressor is dropped only after the ticker thread ends.
+			let compressor = unsafe { compressor_ptr.deref() };
 			loop {
 				xz_bar.set_position(compressor.total_in());
 				if prev_out < compressor.total_out() {
