@@ -1,8 +1,9 @@
-use std::{io::{self, Write}, path::{Path, PathBuf}, thread::{JoinHandle, self}};
-use crate::{config::{TagKeepMode, config}, error::ResultExt, input};
+use std::{io::{self, Read, Write}, path::{Path, PathBuf}, thread::{self, JoinHandle}};
+use crate::{config::{TagKeepMode, config}, error::ResultExt, input, static_ptr::StaticPointer};
 use super::{bars::BarsHandler, metadata};
 use colored::Colorize;
 use fs_id::{FileID, GetID};
+use os_pipe::PipeReader;
 use tar::Builder;
 
 macro_rules! try_access {
@@ -21,6 +22,10 @@ macro_rules! try_access {
 }
 
 use try_access;
+
+type SubarchiveValues = (PipeReader, fn(&mut dyn Read) -> io::Result<()>);
+
+pub static mut SUBARCHIVE_VALUES: StaticPointer<SubarchiveValues> = StaticPointer::null();
 
 fn failed_access(path: &Path, e: &io::Error) -> bool {
 	let mut ignore = config!(ignore_unreadable_files).lock().unwrap();
@@ -150,6 +155,7 @@ fn archive_internal<'a, W: Write + Send + 'static>(
 	failed_access: fn(&Path, &io::Error) -> bool,
 ) {
 	'main: for path_ref in paths {
+		println!("{}", path_ref.display());
 		let path = try_access!(path_ref, path_ref.canonicalize(), continue 'main);
 		let name = get_name(&path, &name_start);
 		if *config!(progress_bars) {
@@ -182,11 +188,12 @@ fn archive<'a, W: Write + Send + 'static>(
 	output_file_id: FileID,
 	paths: impl Iterator<Item = &'a PathBuf>,
 	failed_access: fn(&Path, &io::Error) -> bool,
-) {
+) -> Builder<W> {
 	let mut builder = Builder::new(writer);
 	builder.follow_symlinks(*config!(follow_symlinks));
 	archive_internal(&mut builder, output_file_id, paths, &None, failed_access);
 	builder.finish().unwrap_or_exit();
+	builder
 }
 
 fn make_subarchives<W: Write + Send + 'static>(
@@ -224,7 +231,20 @@ fn make_subarchives<W: Write + Send + 'static>(
 	} else {
 		for dir_path in root_dirs {
 			let (reader, writer) = os_pipe::pipe().unwrap_or_exit();
-			let dir_builder = Builder::new(writer);
+			let subarchive_values: SubarchiveValues = (reader, |compressor| {
+				io::copy(compressor, &mut std::fs::File::create("idk.tar.xz")?)?;
+				Ok(())
+			});
+			// SAFETY: Recieving thread is parked.
+			unsafe { SUBARCHIVE_VALUES.set(&subarchive_values) }
+			main_thread.unpark();
+			let mut paths = Vec::new();
+			for entry in try_access!(dir_path, dir_path.read_dir()) {
+				paths.push(try_access!(dir_path, entry).path());
+			}
+			archive(writer, output_file_id, paths.iter(), failed_access);
+			println!("waiting...");
+			thread::park();
 		}
 		main_thread.unpark();
 		builder.finish().unwrap_or_exit();

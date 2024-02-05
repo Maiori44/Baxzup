@@ -1,6 +1,6 @@
 use fs_id::GetID;
 use xz2::{read::XzEncoder, stream::MtStreamBuilder};
-use crate::{config::{config, assert_config}, error::ResultExt, input};
+use crate::{backup::tar::SUBARCHIVE_VALUES, config::{assert_config, config}, error::ResultExt, input};
 use self::bars::BarsHandler;
 use std::{fs::{self, File, Metadata}, io::{self, Read}, path::Path, sync::OnceLock, process, thread};
 use os_pipe::PipeReader;
@@ -105,7 +105,11 @@ pub fn init() -> io::Result<()> {
 		let tar_thread = tar::spawn_thread(output_file, output_file_id);
 		loop {
 			thread::park();
-			break tar_thread;
+			// SAFETY: The tar thread will drop the values only after this thread unparks it.
+			let subarchive_values = unsafe { SUBARCHIVE_VALUES.deref() };
+			compress(subarchive_values.0.try_clone()?, subarchive_values.1)?;
+			println!("compressed");
+			tar_thread.thread().unpark();
 		}
 	} else {
 		let (reader, writer) = os_pipe::pipe()?;
