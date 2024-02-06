@@ -32,8 +32,12 @@ impl<T> StaticPointer<T> {
 
 	pub fn set(&mut self, new_ptr: *const T) {
 		#[cfg(debug_assertions)]
-		{ self.not_null = true; }
+		{ self.not_null = !new_ptr.is_null(); }
 		self.ptr = new_ptr;
+	}
+
+	pub fn is_null(&self) -> bool {
+		self.ptr.is_null()
 	}
 }
 

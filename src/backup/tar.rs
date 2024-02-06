@@ -1,4 +1,4 @@
-use std::{io::{self, Read, Write}, path::{Path, PathBuf}, thread::{self, JoinHandle}};
+use std::{io::{self, Read, Write}, path::{Path, PathBuf}, thread::{self, JoinHandle}, ptr};
 use crate::{config::{TagKeepMode, config}, error::ResultExt, input, static_ptr::StaticPointer};
 use super::{bars::BarsHandler, metadata};
 use colored::Colorize;
@@ -229,7 +229,9 @@ fn make_subarchives<W: Write + Send + 'static>(
 			failed_access
 		);
 	} else {
+		println!("{root_dirs:#?}");
 		for dir_path in root_dirs {
+			println!("now doing {}", dir_path.display());
 			let (reader, writer) = os_pipe::pipe().unwrap_or_exit();
 			let subarchive_values: SubarchiveValues = (reader, |compressor| {
 				io::copy(compressor, &mut std::fs::File::create("idk.tar.xz")?)?;
@@ -246,6 +248,8 @@ fn make_subarchives<W: Write + Send + 'static>(
 			println!("waiting...");
 			thread::park();
 		}
+		// SAFETY: Recieving thread is parked.
+		unsafe { SUBARCHIVE_VALUES.set(ptr::null()) }
 		main_thread.unpark();
 		builder.finish().unwrap_or_exit();
 	}

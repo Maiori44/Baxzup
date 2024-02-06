@@ -106,7 +106,13 @@ pub fn init() -> io::Result<()> {
 		loop {
 			thread::park();
 			// SAFETY: The tar thread will drop the values only after this thread unparks it.
-			let subarchive_values = unsafe { SUBARCHIVE_VALUES.deref() };
+			let subarchive_values = unsafe {
+				if SUBARCHIVE_VALUES.is_null() {
+					break tar_thread;
+				} else {
+					SUBARCHIVE_VALUES.deref()
+				}
+			};
 			compress(subarchive_values.0.try_clone()?, subarchive_values.1)?;
 			println!("compressed");
 			tar_thread.thread().unpark();
