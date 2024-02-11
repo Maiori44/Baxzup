@@ -1,4 +1,4 @@
-use std::{io::{self, Read, Write, Seek, SeekFrom}, path::{Path, PathBuf}, thread::{self, JoinHandle}, ptr, fs::File};
+use std::{io::{self, Write, Seek, SeekFrom}, path::{Path, PathBuf}, thread::{self, JoinHandle}, ptr, fs::File};
 use crate::{config::{TagKeepMode, config}, error::ResultExt, input, static_ptr::StaticPointer};
 use super::{bars::BarsHandler, metadata};
 use colored::Colorize;
@@ -243,24 +243,22 @@ fn make_subarchives<W: Write + Send + 'static>(
 				reader,
 				dir_path,
 				builder: &mut builder as *mut _ as usize as *mut Builder<File>,
-				f: |compressor, dir_path, builder| {
+				f: |mut compressor, dir_path, builder| {
 					let mut header = Header::new_gnu();
 					//header.set_metadata(&dir_path.metadata()?);
-					let testname = format!("src/{}.tar.xz", dir_path.file_name().unwrap().to_string_lossy());
-					io::copy(compressor, &mut File::create(&testname)?)?;
-					//builder.append_file(&testname, &mut File::open(&testname).unwrap());
 					let header_pos = builder.get_mut().stream_position()?;
 					builder.append_data(
 						&mut header,
-						&testname,
-						File::open(&testname)?
+						dir_path.with_extension("tar.xz"),
+						&mut compressor,
 					)?;
-					header.set_size(File::open(&testname)?.metadata()?.len());
+					header.set_size(compressor.total_out());
+					header.set_cksum();
 					let output_file = builder.get_mut();
-					println!("{header_pos} {}", header_pos as i64);
-					output_file.seek(SeekFrom::Start(header_pos));
-					output_file.write(header.as_bytes());
-					output_file.seek(SeekFrom::End(0));
+					println!("{}", header.size()?);
+					output_file.seek(SeekFrom::Start(header_pos))?;
+					output_file.write(header.as_bytes())?;
+					output_file.seek(SeekFrom::End(0))?;
 					Ok(())
 				}
 			};
