@@ -34,10 +34,10 @@ pub fn metadata(path: impl AsRef<Path>) -> io::Result<Metadata> {
 
 fn compress<T>(
 	reader: PipeReader,
-	f: impl FnOnce(&mut dyn Read) -> io::Result<T>,
+	f: impl FnOnce(&mut XzEncoder<PipeReader>) -> io::Result<T>,
 ) -> io::Result<()> {
 	let config = config!();
-	let compressor = XzEncoder::new_stream(
+	let mut compressor = XzEncoder::new_stream(
 		reader,
 		MtStreamBuilder::new()
 			.preset(config.level)
@@ -62,7 +62,7 @@ fn compress<T>(
 			compressor
 		})?;
 	} else {
-		f(&mut ReaderObserver(compressor))?;
+		f(&mut compressor)?;
 	}
 	Ok(())
 }
@@ -113,14 +113,31 @@ pub fn init() -> io::Result<()> {
 					SUBARCHIVE_VALUES.deref()
 				}
 			};
-			compress(subarchive_values.0.try_clone()?, subarchive_values.1)?;
+			compress(
+				subarchive_values.reader.try_clone()?,
+				|compressor| {
+					unsafe {
+						(subarchive_values.f)(
+							compressor,
+							&*subarchive_values.dir_path,
+							&mut *subarchive_values.builder,
+						)
+					}
+				}
+			)?;
 			println!("compressed");
 			tar_thread.thread().unpark();
 		}
 	} else {
 		let (reader, writer) = os_pipe::pipe()?;
 		let tar_thread = tar::spawn_thread(writer, output_file_id);
-		compress(reader, |compressor| io::copy(compressor, &mut output_file))?;
+		compress(reader, |compressor| {
+			if config.progress_bars {
+				io::copy(compressor, &mut output_file)
+			} else {
+				io::copy(&mut ReaderObserver(compressor), &mut output_file)
+			}
+		})?;
 		tar_thread
 	}.join().unwrap();
 	BarsHandler::end(|bars_handler| {
