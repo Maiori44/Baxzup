@@ -2,7 +2,7 @@ use fs_id::GetID;
 use xz2::{read::XzEncoder, stream::MtStreamBuilder};
 use crate::{backup::tar::SUBARCHIVE_VALUES, config::{assert_config, config}, error::ResultExt, input};
 use self::bars::BarsHandler;
-use std::{fs::{self, File, Metadata}, io::{self, Read}, path::Path, sync::OnceLock, process, thread};
+use std::{borrow::BorrowMut, fs::{self, File, Metadata}, io::{self, Read}, path::Path, process, sync::OnceLock, thread};
 use os_pipe::PipeReader;
 use colored::Colorize;
 
@@ -118,26 +118,19 @@ pub fn init() -> io::Result<()> {
 				|compressor| {
 					unsafe {
 						(subarchive_values.f)(
-							compressor,
+							compressor.borrow_mut(),
 							&*subarchive_values.dir_path,
 							&mut *subarchive_values.builder,
 						)
 					}
 				}
 			)?;
-			println!("compressed");
 			tar_thread.thread().unpark();
 		}
 	} else {
 		let (reader, writer) = os_pipe::pipe()?;
 		let tar_thread = tar::spawn_thread(writer, output_file_id);
-		compress(reader, |compressor| {
-			if config.progress_bars {
-				io::copy(compressor, &mut output_file)
-			} else {
-				io::copy(&mut ReaderObserver(compressor), &mut output_file)
-			}
-		})?;
+		compress(reader, |compressor| io::copy(compressor, &mut output_file))?;
 		tar_thread
 	}.join().unwrap();
 	BarsHandler::end(|bars_handler| {

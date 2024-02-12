@@ -4,7 +4,7 @@ use super::{bars::BarsHandler, metadata};
 use colored::Colorize;
 use fs_id::{FileID, GetID};
 use os_pipe::PipeReader;
-use tar::{Builder, Header};
+use tar::{Builder, EntryType, Header};
 use xz2::read::XzEncoder;
 
 macro_rules! try_access {
@@ -161,7 +161,6 @@ fn archive_internal<'a, W: Write + Send + 'static>(
 	failed_access: fn(&Path, &io::Error) -> bool,
 ) {
 	'main: for path_ref in paths {
-		println!("{}", path_ref.display());
 		let path = try_access!(path_ref, path_ref.canonicalize(), continue 'main);
 		let name = get_name(&path, name_start);
 		if *config!(progress_bars) {
@@ -223,21 +222,20 @@ fn make_subarchives<W: Write + Send + 'static>(
 	if root_dirs.len() == 1 {
 		let path = try_access!(&paths[0], paths[0].canonicalize());
 		let mut inner_paths = Vec::new();
+		let name_start = Some(get_name(path.as_path(), &name_start));
 		for entry in try_access!(path, path.read_dir()) {
-			inner_paths.push(try_access!(path, entry).path());
+			inner_paths.push(get_name(&try_access!(path, entry).path(), &name_start));
 		}
 		make_subarchives(
 			builder,
 			output_file_id,
 			main_thread,
 			&inner_paths,
-			Some(get_name(path.as_path(), &name_start)),
+			name_start,
 			failed_access
 		);
 	} else {
-		println!("{root_dirs:#?}");
 		for dir_path in root_dirs {
-			println!("now doing {}", dir_path.display());
 			let (reader, writer) = os_pipe::pipe().unwrap_or_exit();
 			let subarchive_values = SubarchiveValues {
 				reader,
@@ -245,7 +243,9 @@ fn make_subarchives<W: Write + Send + 'static>(
 				builder: &mut builder as *mut _ as usize as *mut Builder<File>,
 				f: |mut compressor, dir_path, builder| {
 					let mut header = Header::new_gnu();
-					//header.set_metadata(&dir_path.metadata()?);
+					header.set_metadata(&dir_path.metadata()?);
+					header.set_mode(header.mode().unwrap() ^ 0o140000);
+					header.set_entry_type(EntryType::Regular);
 					let header_pos = builder.get_mut().stream_position()?;
 					builder.append_data(
 						&mut header,
@@ -255,7 +255,6 @@ fn make_subarchives<W: Write + Send + 'static>(
 					header.set_size(compressor.total_out());
 					header.set_cksum();
 					let output_file = builder.get_mut();
-					println!("{}", header.size()?);
 					output_file.seek(SeekFrom::Start(header_pos))?;
 					output_file.write(header.as_bytes())?;
 					output_file.seek(SeekFrom::End(0))?;
@@ -270,17 +269,8 @@ fn make_subarchives<W: Write + Send + 'static>(
 				paths.push(try_access!(dir_path, entry).path());
 			}
 			archive(writer, output_file_id, paths.iter(), failed_access);
-			println!("waiting...");
 			thread::park();
 		}
-		//builder.append_file("src/idk.tar.xz", &mut File::open("idk.tar.xz").unwrap());
-					//header.set_metadata(&dir_path.metadata()?);
-		/*let mut header = Header::new_gnu();
-		builder.append_data(
-			&mut header,
-			"idk.tar.xz",
-			File::open("idk.tar.xz").unwrap()
-		);*/
 		// SAFETY: Recieving thread is parked.
 		unsafe { SUBARCHIVE_VALUES.set(ptr::null()) }
 		main_thread.unpark();
