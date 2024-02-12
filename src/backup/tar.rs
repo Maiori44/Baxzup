@@ -1,11 +1,10 @@
 use std::{io::{self, Write, Seek, SeekFrom}, path::{Path, PathBuf}, thread::{self, JoinHandle}, ptr, fs::File};
 use crate::{config::{TagKeepMode, config}, error::ResultExt, input, static_ptr::StaticPointer};
-use super::{bars::BarsHandler, metadata};
+use super::{bars::BarsHandler, metadata, BorrowCompressor};
 use colored::Colorize;
 use fs_id::{FileID, GetID};
 use os_pipe::PipeReader;
 use tar::{Builder, EntryType, Header};
-use xz2::read::XzEncoder;
 
 macro_rules! try_access {
 	($path:expr, $f:expr, $else:expr) => {
@@ -28,7 +27,7 @@ pub struct SubarchiveValues {
 	pub reader: PipeReader,
 	pub dir_path: *const PathBuf,
 	pub builder: *mut Builder<File>,
-	pub f: fn(&mut XzEncoder<PipeReader>, &PathBuf, &mut Builder<File>) -> io::Result<()>
+	pub f: fn(&mut dyn BorrowCompressor, &PathBuf, &mut Builder<File>) -> io::Result<()>
 }
 
 pub static mut SUBARCHIVE_VALUES: StaticPointer<SubarchiveValues> = StaticPointer::null();
@@ -252,7 +251,7 @@ fn make_subarchives<W: Write + Send + 'static>(
 						dir_path.with_extension("tar.xz"),
 						&mut compressor,
 					)?;
-					header.set_size(compressor.total_out());
+					header.set_size(compressor.borrow_compressor().total_out());
 					header.set_cksum();
 					let output_file = builder.get_mut();
 					output_file.seek(SeekFrom::Start(header_pos))?;

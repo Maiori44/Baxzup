@@ -2,7 +2,7 @@ use fs_id::GetID;
 use xz2::{read::XzEncoder, stream::MtStreamBuilder};
 use crate::{backup::tar::SUBARCHIVE_VALUES, config::{assert_config, config}, error::ResultExt, input};
 use self::bars::BarsHandler;
-use std::{borrow::BorrowMut, fs::{self, File, Metadata}, io::{self, Read}, path::Path, process, sync::OnceLock, thread};
+use std::{fs::{self, File, Metadata}, io::{self, Read}, path::Path, process, sync::OnceLock, thread};
 use os_pipe::PipeReader;
 use colored::Colorize;
 
@@ -24,6 +24,22 @@ impl<R: Read> Read for ReaderObserver<R> {
 	}
 }
 
+pub trait BorrowCompressor : Read {
+	fn borrow_compressor(&mut self) -> &mut XzEncoder<PipeReader>;
+}
+
+impl BorrowCompressor for XzEncoder<PipeReader> {
+	fn borrow_compressor(&mut self) -> &mut XzEncoder<PipeReader> {
+		self
+	}
+}
+
+impl BorrowCompressor for ReaderObserver<XzEncoder<PipeReader>> {
+	fn borrow_compressor(&mut self) -> &mut XzEncoder<PipeReader> {
+		&mut self.0
+	}
+}
+
 pub fn metadata(path: impl AsRef<Path>) -> io::Result<Metadata> {
 	if *config!(follow_symlinks) {
 		path.as_ref().metadata()
@@ -34,10 +50,10 @@ pub fn metadata(path: impl AsRef<Path>) -> io::Result<Metadata> {
 
 fn compress<T>(
 	reader: PipeReader,
-	f: impl FnOnce(&mut XzEncoder<PipeReader>) -> io::Result<T>,
+	f: impl FnOnce(&mut dyn BorrowCompressor) -> io::Result<T>,
 ) -> io::Result<()> {
 	let config = config!();
-	let mut compressor = XzEncoder::new_stream(
+	let compressor = XzEncoder::new_stream(
 		reader,
 		MtStreamBuilder::new()
 			.preset(config.level)
@@ -62,7 +78,7 @@ fn compress<T>(
 			compressor
 		})?;
 	} else {
-		f(&mut compressor)?;
+		f(&mut ReaderObserver(compressor))?;
 	}
 	Ok(())
 }
@@ -118,7 +134,7 @@ pub fn init() -> io::Result<()> {
 				|compressor| {
 					unsafe {
 						(subarchive_values.f)(
-							compressor.borrow_mut(),
+							compressor,
 							&*subarchive_values.dir_path,
 							&mut *subarchive_values.builder,
 						)
