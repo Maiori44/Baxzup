@@ -7,17 +7,17 @@ use os_pipe::PipeReader;
 use tar::{Builder, EntryType, Header};
 
 macro_rules! try_access {
-	($path:expr, $f:expr, $else:expr) => {
+	($path:expr, $f:expr, $else:expr, $failed:expr) => {
 		loop {
 			match $f {
 				Ok(result) => break result,
-				Err(e) if failed_access(&$path, &e) => $else,
+				Err(e) if $failed(&$path, &e) => $else,
 				_ => {}
 			}
 		}
 	};
-	($path:expr, $f:expr) => {
-		self::try_access!($path, $f, return)
+	($path:expr, $f:expr, $failed:expr) => {
+		self::try_access!($path, $f, return, $failed)
 	};
 }
 
@@ -63,7 +63,7 @@ fn scan_path_internal(
 ) {
 	macro_rules! try_access {
 		($f:expr) => {
-			self::try_access!(path, $f)
+			self::try_access!(path, $f, failed_access)
 		};
 	}
 
@@ -160,7 +160,7 @@ fn archive_internal<'a, W: Write + Send + 'static>(
 	failed_access: fn(&Path, &io::Error) -> bool,
 ) {
 	'main: for path_ref in paths {
-		let path = try_access!(path_ref, path_ref.canonicalize(), continue 'main);
+		let path = try_access!(path_ref, path_ref.canonicalize(), continue 'main, failed_access);
 		let name = get_name(&path, name_start);
 		if *config!(progress_bars) {
 			scan_path(output_file_id, path, name, failed_access, &mut |path, name| {
@@ -203,11 +203,17 @@ fn archive<'a, W: Write + Send + 'static>(
 fn make_subarchives<W: Write + Send + 'static>(
 	mut builder: Builder<W>,
 	output_file_id: FileID,
-	main_thread: thread::Thread,
+	main_thread: &thread::Thread,
 	paths: &Vec<PathBuf>,
 	name_start: Option<PathBuf>,
 	failed_access: fn(&Path, &io::Error) -> bool,
 ) {
+	macro_rules! try_access {
+		($path:expr, $f:expr) => {
+			self::try_access!($path, $f, return, failed_access)
+		};
+	}
+
 	let mut root_files = Vec::new();
 	let mut root_dirs = Vec::with_capacity(paths.len());
 	for path_ref in paths {
@@ -270,9 +276,6 @@ fn make_subarchives<W: Write + Send + 'static>(
 			archive(writer, output_file_id, paths.iter(), failed_access);
 			thread::park();
 		}
-		// SAFETY: Recieving thread is parked.
-		unsafe { SUBARCHIVE_VALUES.set(ptr::null()) }
-		main_thread.unpark();
 		builder.finish().unwrap_or_exit();
 	}
 }
@@ -298,7 +301,10 @@ pub fn spawn_thread<W: Write + Send + 'static>(
 		if let Some(main_thread) = main_thread {
 			let mut builder = Builder::new(writer);
 			builder.follow_symlinks(*config!(follow_symlinks));
-			make_subarchives(builder, output_file_id, main_thread, &config.paths, None, *failed_access);
+			make_subarchives(builder, output_file_id, &main_thread, &config.paths, None, *failed_access);
+			// SAFETY: Recieving thread is parked.
+			unsafe { SUBARCHIVE_VALUES.set(ptr::null()) }
+			main_thread.unpark();
 		} else {
 			archive(writer, output_file_id, config.paths.iter(), *failed_access);
 		}
