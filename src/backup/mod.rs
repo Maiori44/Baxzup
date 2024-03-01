@@ -136,6 +136,7 @@ pub fn init() -> io::Result<()> {
 						(subarchive_values.f)(
 							compressor,
 							&*subarchive_values.dir_path,
+							&*subarchive_values.name_start,
 							&mut *subarchive_values.builder,
 						)
 					}

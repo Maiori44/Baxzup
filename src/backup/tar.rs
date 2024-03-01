@@ -1,4 +1,9 @@
-use std::{io::{self, Write, Seek, SeekFrom}, path::{Path, PathBuf}, thread::{self, JoinHandle}, ptr, fs::File};
+use std::{
+	fs::{DirEntry, File},
+	io::{self, Seek, SeekFrom, Write},
+	path::{Path, PathBuf},
+	ptr, thread::{self, JoinHandle}
+};
 use crate::{config::{TagKeepMode, config}, error::ResultExt, input, static_ptr::StaticPointer};
 use super::{bars::BarsHandler, metadata, BorrowCompressor};
 use colored::Colorize;
@@ -26,8 +31,9 @@ use try_access;
 pub struct SubarchiveValues {
 	pub reader: PipeReader,
 	pub dir_path: *const PathBuf,
+	pub name_start: *const Option<PathBuf>,
 	pub builder: *mut Builder<File>,
-	pub f: fn(&mut dyn BorrowCompressor, &PathBuf, &mut Builder<File>) -> io::Result<()>
+	pub f: fn(&mut dyn BorrowCompressor, &PathBuf, &Option<PathBuf>, &mut Builder<File>) -> io::Result<()>
 }
 
 pub static mut SUBARCHIVE_VALUES: StaticPointer<SubarchiveValues> = StaticPointer::null();
@@ -54,6 +60,36 @@ fn failed_access(path: &Path, e: &io::Error) -> bool {
 	})
 }
 
+fn get_dir_contents(
+	path: &PathBuf,
+	failed_access: &fn(&Path, &io::Error) -> bool,
+) -> Option<(Vec<DirEntry>, bool)> {
+	macro_rules! try_access {
+		($f:expr) => {
+			self::try_access!(path, $f, return None, &failed_access)
+		};
+	}
+
+	let mut contents = Vec::new();
+	let mut keep_tag = false;
+	for entry in try_access!(path.read_dir()) {
+		let entry = try_access!(entry);
+		if let Some(mode) = config!(exclude_tags).get(&entry.file_name()).copied() {
+			if mode == TagKeepMode::None {
+				return None;
+			}
+			contents.clear();
+			if mode == TagKeepMode::Tag {
+				keep_tag = true;
+				contents.push(entry);
+			}
+			break;
+		}
+		contents.push(entry);
+	}
+	Some((contents, keep_tag))
+}
+
 fn scan_path_internal(
 	output_file_id: FileID,
 	path: PathBuf,
@@ -70,24 +106,9 @@ fn scan_path_internal(
 	let config = config!();
 	let meta = try_access!(metadata(&path));
 	if meta.is_dir() && (config.follow_symlinks || !meta.is_symlink()) {
-		let mut contents = Vec::new();
-		let mut keep_tag = false;
-		for entry in try_access!(path.read_dir()) {
-			let entry = try_access!(entry);
-			if let Some(mode) = config.exclude_tags.get(&entry.file_name()).copied() {
-				if mode == TagKeepMode::None {
-					return;
-				} else {
-					contents.clear();
-					if mode == TagKeepMode::Tag {
-						keep_tag = true;
-						contents.push(entry);
-					}
-				}
-				break;
-			}
-			contents.push(entry);
-		}
+		let Some((contents, keep_tag)) = get_dir_contents(&path, &failed_access) else {
+			return;
+		};
 		try_access!(action(&path, &name));
 		let scan_func = if keep_tag { scan_path_internal } else { scan_path };
 		for entry in contents {
@@ -102,6 +123,15 @@ fn scan_path_internal(
 	}
 }
 
+fn is_excluded(path: &[u8]) -> bool {
+	for pattern in config!(exclude) {
+		if pattern.is_match(path) {
+			return true;
+		}
+	}
+	false
+}
+
 pub fn scan_path(
 	output_file_id: FileID,
 	path: PathBuf,
@@ -109,10 +139,8 @@ pub fn scan_path(
 	failed_access: fn(&Path, &io::Error) -> bool,
 	action: &mut impl FnMut(&PathBuf, &PathBuf) -> io::Result<()>,
 ) {
-	for pattern in config!(exclude) {
-		if pattern.is_match(path.as_os_str().as_encoded_bytes()) {
-			return;
-		}
+	if is_excluded(path.as_os_str().as_encoded_bytes()) {
+		return
 	}
 	scan_path_internal(output_file_id, path, name, failed_access, action)
 }
@@ -155,11 +183,12 @@ fn get_name(path: &Path, name_start: &Option<PathBuf>) -> PathBuf {
 fn archive_internal<'a, W: Write + Send + 'static>(
 	builder: &mut Builder<W>,
 	output_file_id: FileID,
-	paths: impl Iterator<Item = &'a PathBuf>,
+	paths: impl Iterator<Item = impl AsRef<Path>>,
 	name_start: &Option<PathBuf>,
 	failed_access: fn(&Path, &io::Error) -> bool,
 ) {
 	'main: for path_ref in paths {
+		let path_ref = path_ref.as_ref();
 		let path = try_access!(path_ref, path_ref.canonicalize(), continue 'main, failed_access);
 		let name = get_name(&path, name_start);
 		if *config!(progress_bars) {
@@ -190,7 +219,7 @@ fn archive_internal<'a, W: Write + Send + 'static>(
 fn archive<'a, W: Write + Send + 'static>(
 	writer: W,
 	output_file_id: FileID,
-	paths: impl Iterator<Item = &'a PathBuf>,
+	paths: impl Iterator<Item = impl AsRef<Path>>,
 	failed_access: fn(&Path, &io::Error) -> bool,
 ) -> Builder<W> {
 	let mut builder = Builder::new(writer);
@@ -217,19 +246,23 @@ fn make_subarchives<W: Write + Send + 'static>(
 	let mut root_files = Vec::new();
 	let mut root_dirs = Vec::with_capacity(paths.len());
 	for path_ref in paths {
+		if is_excluded(path_ref.as_os_str().as_encoded_bytes()) {
+			continue
+		}
 		if path_ref.is_dir() {
 			root_dirs.push(path_ref);
 		} else {
 			root_files.push(path_ref);
 		}
 	}
+	println!("{root_files:?}\n{root_dirs:?}");
 	archive_internal(&mut builder, output_file_id, root_files.into_iter(), &name_start, failed_access);
 	if root_dirs.len() == 1 {
 		let path = try_access!(&paths[0], paths[0].canonicalize());
 		let mut inner_paths = Vec::new();
 		let name_start = Some(get_name(path.as_path(), &name_start));
 		for entry in try_access!(path, path.read_dir()) {
-			inner_paths.push(get_name(&try_access!(path, entry).path(), &name_start));
+			inner_paths.push(try_access!(path, entry).path());
 		}
 		make_subarchives(
 			builder,
@@ -241,20 +274,25 @@ fn make_subarchives<W: Write + Send + 'static>(
 		);
 	} else {
 		for dir_path in root_dirs {
+			let Some((contents, ..)) = get_dir_contents(dir_path, &failed_access) else {
+				return;
+			};
 			let (reader, writer) = os_pipe::pipe().unwrap_or_exit();
 			let subarchive_values = SubarchiveValues {
 				reader,
 				dir_path,
+				name_start: &name_start,
 				builder: &mut builder as *mut _ as usize as *mut Builder<File>,
-				f: |mut compressor, dir_path, builder| {
+				f: |mut compressor, dir_path, name_start, builder| {
 					let mut header = Header::new_gnu();
 					header.set_metadata(&dir_path.metadata()?);
 					header.set_mode(header.mode().unwrap() ^ 0o140000);
 					header.set_entry_type(EntryType::Regular);
+					let path_name = get_name(&dir_path, &name_start);
 					let header_pos = builder.get_mut().stream_position()?;
 					builder.append_data(
 						&mut header,
-						dir_path.with_extension("tar.xz"),
+						path_name.with_extension("tar.xz"),
 						&mut compressor,
 					)?;
 					header.set_size(compressor.borrow_compressor().total_out());
@@ -269,11 +307,7 @@ fn make_subarchives<W: Write + Send + 'static>(
 			// SAFETY: Recieving thread is parked.
 			unsafe { SUBARCHIVE_VALUES.set(&subarchive_values) }
 			main_thread.unpark();
-			let mut paths = Vec::new();
-			for entry in try_access!(dir_path, dir_path.read_dir()) {
-				paths.push(try_access!(dir_path, entry).path());
-			}
-			archive(writer, output_file_id, paths.iter(), failed_access);
+			archive(writer, output_file_id, contents.into_iter().map(|entry| entry.path()), failed_access);
 			thread::park();
 		}
 		builder.finish().unwrap_or_exit();
